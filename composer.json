@@ -1,0 +1,7 @@
+{
+  "require": {
+    "setasign/fpdi-fpdf": "^2.0",
+    "symfony/http-foundation": "2.5.*",
+    "guzzlehttp/guzzle": "3.8.1"
+  }
+}
