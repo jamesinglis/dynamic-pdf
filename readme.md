@@ -120,7 +120,7 @@ Allows you to verify whether or not the value is valid via a validation callback
 
 Arguments:
 * string $input - sanitized value
-* @param array $url_argument
+* array $url_argument - all configuration values for this URL argument
  
 Returns: (bool) validation result
 
@@ -172,6 +172,8 @@ function pdf_template_custom_callback($host_configuration_array, $url_arguments_
 Helper functions that don't belong anywhere else, but it's worth documenting:
 
 ### strip_accents
+
+Strip the accents from the string and replace with the nearest ASCII equivalent (e.g. "Jämés" becomes "James").
 
 ## To Do in Future
 (if there's a demand for it)
