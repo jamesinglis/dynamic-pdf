@@ -1,0 +1,104 @@
+{
+  "global": {
+    "debug_mode": true,
+    "show_borders": true,
+    "validate_arguments": true,
+    "cache_dynamic_files": false,
+    "locale": "en_AU"
+  },
+  "hosts": {
+    "default": {
+      "slug": "PDF",
+      "pdf_template": "resources/blank.pdf",
+      "pdf_template_callback": "",
+      "pdf_orientation": "P",
+      "redirect_location": "http://www.google.com"
+    }
+  },
+  "url_arguments": [
+    {
+      "argument": "name",
+      "type": "custom",
+      "default": "",
+      "default_callback": "",
+      "sanitize_callback": "sanitize_process_name_filter",
+      "validate_callback": "validate_not_empty",
+      "mutate_callback": ""
+    },
+    {
+      "argument": "amount",
+      "type": "float",
+      "default": "-1",
+      "default_callback": "",
+      "sanitize_callback": "",
+      "validate_callback": "validate_int_under_999999",
+      "mutate_callback": ""
+    }
+  ],
+  "text_blocks": [
+    {
+      "text": "%%NAME%%! You have earned $%%AMOUNT%%!",
+      "text_template": "heading",
+      "toggle_callback": "",
+      "position": {
+        "x": 10,
+        "y": 52,
+        "width": 190,
+        "height": 20,
+        "align": "C"
+      },
+      "fit_line": true
+    }
+  ],
+  "text_templates": {
+    "standard": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "size": 8,
+      "font": "OpenSans-Cond",
+      "style": ""
+    },
+    "standard_large": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "size": 12,
+      "font": "OpenSans-Cond",
+      "style": ""
+    },
+    "standard_featured": {
+      "r": 190,
+      "g": 0,
+      "b": 0,
+      "size": 8,
+      "font": "OpenSans-Cond",
+      "style": "B"
+    },
+    "heading": {
+      "r": 10,
+      "g": 22,
+      "b": 181,
+      "size": 48,
+      "font": "OpenSans-Cond",
+      "style": "B"
+    }
+  },
+  "fonts": [
+    {
+      "name": "OpenSans-Cond",
+      "style": "",
+      "file": "OpenSans-CondLight.php"
+    },
+    {
+      "name": "OpenSans-Cond",
+      "style": "i",
+      "file": "OpenSans-CondLightItalic.php"
+    },
+    {
+      "name": "OpenSans-Cond",
+      "style": "b",
+      "file": "OpenSans-CondBold.php"
+    }
+  ]
+}
