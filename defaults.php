@@ -21,6 +21,7 @@ $default_url_argument = array(
 $default_text_block = array(
     "text" => "",
     "text_template" => "standard",
+    "toggle_callback" => "",
     "position" => array(
         "x" => 10,
         "y" => 10,

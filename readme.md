@@ -167,6 +167,24 @@ function pdf_template_custom_callback($host_configuration_array, $url_arguments_
 }
 ```
 
+### Text Block Toggle Callback
+
+Arguments:
+
+* array $text_block - all configuration for the current text block
+* array $url_arguments_array - all URL arguments, sanitized and mutated
+
+Returns: (bool) toggle result
+
+Example:
+
+```php
+function text_block_toggle_custom_callback($text_block, $url_arguments)
+{
+    return true;
+}
+```
+
 ## Helpers
 
 Helper functions that don't belong anywhere else, but it's worth documenting:

@@ -135,6 +135,12 @@ foreach ($config["fonts"] as $font) {
 
 foreach ($config["text_blocks"] as $text_block) {
     $text_block = array_merge($default_text_block, $text_block);
+
+    // If there's a toggle callback, run it and if it returns false, skip further processing
+    if (!empty($text_block['toggle_callback']) && is_callable($text_block['toggle_callback']) && call_user_func($text_block['toggle_callback'], $text_block, $url_arguments) === false) {
+        continue;
+    }
+
     $text_template = $config["text_templates"][$text_block["text_template"]];
     $pdf->SetFont($text_template["font"], $text_template["style"]);
     $pdf->SetTextColor($text_template["r"], $text_template["g"], $text_template["b"]);

@@ -62,26 +62,85 @@ function pdf_template_custom_callback($host_configuration_array, $url_arguments_
     return $host_configuration_array["pdf_template"];
 }
 
+/**
+ * Custom callback to determine whether or not a text block should show
+ *
+ * @param array $text_block
+ * @param array $url_arguments
+ * @return bool
+ */
+function text_block_toggle_custom_callback($text_block, $url_arguments)
+{
+    return true;
+}
+
+
 /*
  * Commonly used callbacks
  */
 
+/**
+ * Standard function for sanitizing a name
+ *
+ * @param $input
+ * @return string
+ */
 function sanitize_process_name_filter($input)
 {
     return trim(strip_accents($input));
 }
 
+/**
+ * Ensure that the input is not empty
+ *
+ * @param string $input
+ * @return bool
+ */
 function validate_not_empty($input)
 {
     return !empty($input);
 }
 
+/**
+ * Ensure that the integer is between 0 and 999999
+ *
+ * Note: 0 values return false
+ *
+ * @param string $input
+ * @return bool
+ */
 function validate_int_under_999999($input)
 {
     return intval($input) < 999999 && intval($input) > 0;
 }
 
+/**
+ * Ensure that the float is between 0 and 999999
+ *
+ * Note: 0 values return false
+ *
+ * @param string $input
+ * @return bool
+ */
 function validate_float_under_999999($input)
 {
     return floatval($input) < 999999 && floatval($input) > 0;
+}
+
+
+/**
+ * Formats a number as a currency amount (according to locale)
+ *
+ * @param $input
+ * @param array $url_argument
+ * @return mixed
+ */
+function mutate_dollar_amount($input, $url_argument)
+{
+    // If the amount is .00, omit it
+    if (intval($input) == floatval($input)) {
+        return money_format('%.0n', $input);
+    }
+
+    return money_format('%.2n', $input);
 }
