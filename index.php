@@ -15,6 +15,8 @@ if ($config["global"]["debug_mode"]) {
     ini_set('error_reporting', E_ALL);
 }
 
+setlocale(LC_ALL, $config["global"]["locale"]);
+
 define('FPDF_FONTPATH', __DIR__ . '/resources/fonts');
 
 require __DIR__ . '/vendor/autoload.php';
