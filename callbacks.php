@@ -18,7 +18,7 @@ function default_custom_callback($url_argument)
 /**
  * Custom sanitization callback for a URL argument
  *
- * @param $input
+ * @param string $input
  * @return mixed
  */
 function sanitize_custom_callback($input)
@@ -41,7 +41,7 @@ function validate_custom_callback($input, $url_argument)
 /**
  * Custom mutation callback for a URL argument
  *
- * @param $input
+ * @param string $input
  * @param array $url_argument
  * @return mixed
  */

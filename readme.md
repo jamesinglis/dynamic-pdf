@@ -75,10 +75,11 @@ This solution has implemented callback functionality where possible to enable mo
 
 Each relevant callback needs to be a callable function, and can be a standard PDF function or a custom function. callbacks.php contains a number of commonly used callbacks, and are named [type]_[description]:
 
-* sanitize_process_name_filter
-* validate_not_empty
-* validate_int_under_999999
-* validate_float_under_999999
+* sanitize_process_name_filter - Standard function for sanitizing a name
+* validate_not_empty - Ensure that the input is not empty
+* validate_int_under_999999 - Ensure that the integer is between 0 and 999999
+* validate_float_under_999999 - Ensure that the float is between 0 and 999999
+* mutate_dollar_amount - Formats a number as a currency amount (according to locale)
 
 Custom functions can be added to callbacks-custom.php.
 
@@ -202,7 +203,17 @@ Strip the accents from the string and replace with the nearest ASCII equivalent 
 
 ## Questions and Answers
 
-    
+### What's the difference between a sanitize function and a mutation function?
+
+A sanitize function is run before validation. The mutation function is run after the validation.
+
+The sanitize function will run before the variable name is used in the cache filename. The mutate function will not affect the variable name when it is used in the cache filename.
+
+### When should I mutate a value and when should I just do some custom formatting in the text output?
+
+A mutate function will affect all instances that a value is used. At present, there is no conditional mutation so any one-off formatting needs to be done in the text output.
+
+
 ## Version history
 
 ### 0.1 (2017-11-05)
