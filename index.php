@@ -83,7 +83,8 @@ foreach ($config["url_arguments"] as $url_argument) {
         $url_arguments[$argument_name]["active"] = call_user_func($url_argument['mutate_callback'], $url_arguments[$argument_name]["active"], $url_argument);
     }
 
-    $cache_filename[] = $url_arguments[$argument_name]["active"];
+    // We'll build the cache filename from the arguments before they've been mutated
+    $cache_filename[] = $url_arguments[$argument_name]["original"];
 }
 
 // If we're validating the arguments and any of the above have failed their validation callback, now is the time to bail out to the redirect location
