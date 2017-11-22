@@ -49,15 +49,18 @@ $cache_filename = array($config["hosts"][$host]["slug"]);
 foreach ($config["url_arguments"] as $url_argument) {
     $url_argument = array_merge($default_url_argument, $url_argument);
     $argument_name = $url_arguments[$url_argument["argument"]]["name"] = $url_argument["argument"];
+    $filter_options = array();
     switch ($url_argument['type']) {
         case "integer":
             $filter_type = FILTER_SANITIZE_NUMBER_INT;
             break;
         case "float":
             $filter_type = FILTER_SANITIZE_NUMBER_FLOAT;
+            $filter_options = array('flags' => FILTER_FLAG_ALLOW_FRACTION);
             break;
         case "custom":
             $filter_type = FILTER_CALLBACK;
+            $filter_options = array('options' => $url_argument["sanitize_callback"]);
             break;
         default:
             $filter_type = FILTER_SANITIZE_STRING;
@@ -68,13 +71,7 @@ foreach ($config["url_arguments"] as $url_argument) {
         $default_value = call_user_func($url_argument['default_callback'], $url_argument);
     }
 
-    if ($url_argument['type'] === "custom") {
-        $url_arguments[$argument_name]["original"] = $request->query->filter($argument_name, $default_value, false, $filter_type, array('options' => $url_argument["sanitize_callback"]));
-    } else {
-        $url_arguments[$argument_name]["original"] = $request->query->filter($argument_name, $default_value, false, $filter_type);
-    }
-
-    $url_arguments[$argument_name]["active"] = $url_arguments[$argument_name]["original"];
+    $url_arguments[$argument_name]["active"] = $url_arguments[$argument_name]["original"] = $request->query->filter($argument_name, $default_value, false, $filter_type, $filter_options);
 
     // If there's a validation callback, run it and flag if it returns false
     if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]["active"], $url_argument) === false) {
