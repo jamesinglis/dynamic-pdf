@@ -216,6 +216,15 @@ A mutate function will affect all instances that a value is used. At present, th
 
 ## Version history
 
+### 0.2 (2017-11-22)
+* Sets the locale as per config
+* Ensure cache filenames are being generated with non-mutated values
+* Resolve bug with float values not being parsed properly
+* Adds an example configuration file
+* Adds some questions and answers to the readme and inline code documentation
+* Adds text block toggle callback functionality
+* Amends to readme.md file
+
 ### 0.1 (2017-11-05)
 
 * Initial version
