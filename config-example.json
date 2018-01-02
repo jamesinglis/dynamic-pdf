@@ -4,6 +4,8 @@
     "show_borders": true,
     "validate_arguments": true,
     "cache_dynamic_files": false,
+    "cache_expiry_key": "KbkfiI1I7O5mFAkA9OYuHISE",
+    "cache_expiry_after": 2,
     "locale": "en_AU"
   },
   "hosts": {

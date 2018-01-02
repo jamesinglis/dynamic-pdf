@@ -3,7 +3,10 @@
     "debug_mode": true,
     "show_borders": true,
     "validate_arguments": true,
-    "cache_dynamic_files": false
+    "cache_dynamic_files": true,
+    "cache_expiry_key": "KbkfiI1I7O5mFAkA9OYuHISE",
+    "cache_expiry_after": 2,
+    "locale": "en_AU"
   },
   "hosts": {
     "default": {
