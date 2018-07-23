@@ -42,6 +42,7 @@
       "text": "%%NAME%%! You have earned $%%AMOUNT%%!",
       "text_template": "heading",
       "toggle_callback": "",
+      "text_callback": "",
       "position": {
         "x": 10,
         "y": 52,

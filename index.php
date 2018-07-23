@@ -151,15 +151,15 @@ foreach ($config["text_blocks"] as $text_block) {
 
     $text = $text_block["text"];
 
+    // If there's a text callback, run it and return the value
+    if (!empty($text_block['text_callback']) && is_callable($text_block['text_callback'])) {
+        $text = call_user_func($text_block['text_callback'], $text, $url_arguments);
+    }
+
     // Loop through the URL arguments and replace placeholder values with the processed URL argument
     foreach ($url_arguments as $url_argument) {
         $placeholder = "%%" . strtoupper($url_argument["name"]) . "%%";
         $text = str_replace($placeholder, $url_argument["active"], $text);
-    }
-
-    // If there's a text callback, run it and return the value
-    if (!empty($url_argument['text_callback']) && is_callable($url_argument['text_callback'])) {
-        $text = call_user_func($url_argument['text_callback'], $text, $url_arguments);
     }
 
     if ($text_block["fit_line"]) {

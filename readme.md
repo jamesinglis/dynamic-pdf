@@ -186,6 +186,24 @@ function text_block_toggle_custom_callback($text_block, $url_arguments)
 }
 ```
 
+### Text Block Text Callback
+
+Arguments:
+
+* array $text - text supplied by the config before placeholders are processed
+* array $url_arguments_array - all URL arguments, sanitized and mutated
+
+Returns: (string) text before placeholders are processed 
+
+Example:
+
+```php
+function text_block_text_custom_callback($text, $url_arguments)
+{
+    return '';
+}
+```
+
 ## Helpers
 
 Helper functions that don't belong anywhere else, but it's worth documenting:
