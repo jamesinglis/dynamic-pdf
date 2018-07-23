@@ -74,6 +74,18 @@ function text_block_toggle_custom_callback($text_block, $url_arguments)
     return true;
 }
 
+/**
+ * Custom callback to determine text content of a text block
+ *
+ * @param array $text
+ * @param array $url_arguments
+ * @return bool
+ */
+function text_block_text_custom_callback($text, $url_arguments)
+{
+    return true;
+}
+
 
 /*
  * Commonly used callbacks
