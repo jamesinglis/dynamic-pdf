@@ -234,6 +234,11 @@ A mutate function will affect all instances that a value is used. At present, th
 
 ## Version history
 
+### 0.3 (2018-07-24)
+* Adds cache expiry script
+* Adds misc callbacks
+* Adds text callbacks to text blocks
+
 ### 0.2 (2017-11-22)
 * Sets the locale as per config
 * Ensure cache filenames are being generated with non-mutated values
