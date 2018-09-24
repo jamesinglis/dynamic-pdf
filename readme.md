@@ -234,6 +234,10 @@ A mutate function will affect all instances that a value is used. At present, th
 
 ## Version history
 
+### 0.4 (2018-09-24)
+* Flesh out callbacks throughout process and add image processing
+* Adds bulk creation script
+
 ### 0.3 (2018-07-24)
 * Adds cache expiry script
 * Adds misc callbacks
