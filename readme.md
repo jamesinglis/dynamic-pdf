@@ -57,6 +57,7 @@ At minimum, the Hosts config needs to have a "default" value set up. Any other h
 * "default_callback" - callable function to define the default value
 * "sanitize_callback" - callable function to sanitize the raw value
 * "validate_callback" - callable function to validate the sanitized value
+* "validate_for_hosts" - array of hosts that require this argument to validate (empty array matched ALL hosts)
 * "mutate_callback" - callable function to mutate the sanitized, validated value
 
 ### Text Blocks
@@ -233,6 +234,10 @@ A mutate function will affect all instances that a value is used. At present, th
 
 
 ## Version history
+
+### 0.4.1 (2018-11-20)
+* Adds ability to validate an argument for certain hosts only
+* Update example config file
 
 ### 0.4 (2018-09-24)
 * Flesh out callbacks throughout process and add image processing
