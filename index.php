@@ -99,7 +99,8 @@ foreach ($config["url_arguments"] as $url_argument) {
     $url_arguments[$argument_name]["active"] = $url_arguments[$argument_name]["original"] = $request->query->filter($argument_name, $default_value, false, $filter_type, $filter_options);
 
     // If there's a validation callback, run it and flag if it returns false
-    if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]["active"], $url_argument) === false) {
+    if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]["active"], $url_argument) === false
+        && (empty($url_argument['validate_for_hosts']) || in_array($host, $url_argument['validate_for_hosts']))) {
         $valid_arguments = false;
     }
 

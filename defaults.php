@@ -17,6 +17,7 @@ $default_url_argument = array(
     "default_callback" => "",
     "sanitize_callback" => "",
     "validate_callback" => "",
+    "validate_for_hosts" => [],
     "mutate_callback" => "trim",
 );
 
