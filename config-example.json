@@ -8,6 +8,11 @@
     "cache_expiry_after": 2,
     "locale": "en_AU"
   },
+  "bulk_create": {
+    "file_path": "/resources/",
+    "file_name": "Brisbane.csv",
+    "has_header": true
+  },
   "hosts": {
     "default": {
       "slug": "PDF",
@@ -25,6 +30,7 @@
       "default_callback": "",
       "sanitize_callback": "sanitize_process_name_filter",
       "validate_callback": "validate_not_empty",
+      "validate_for_hosts": [],
       "mutate_callback": ""
     },
     {
@@ -34,6 +40,7 @@
       "default_callback": "",
       "sanitize_callback": "",
       "validate_callback": "validate_int_under_999999",
+      "validate_for_hosts": [],
       "mutate_callback": ""
     }
   ],
@@ -41,7 +48,10 @@
     {
       "text": "%%NAME%%! You have earned $%%AMOUNT%%!",
       "text_template": "heading",
+      "text_block_callback": "",
       "toggle_callback": "",
+      "text_callback": "",
+      "position_callback": "",
       "position": {
         "x": 10,
         "y": 52,
@@ -50,6 +60,21 @@
         "align": "C"
       },
       "fit_line": true
+    }
+  ],
+  "image_blocks": [
+    {
+      "source": "resources/300x150.png",
+      "image_block_callback": "",
+      "toggle_callback": "",
+      "source_callback": "",
+      "position_callback": "",
+      "position": {
+        "x": 54,
+        "y": 85,
+        "width": 100,
+        "height": 50
+      }
     }
   ],
   "text_templates": {
