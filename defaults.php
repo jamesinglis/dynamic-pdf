@@ -26,6 +26,7 @@ $default_text_block = array(
     "text" => "",
     "text_template" => "standard",
     "toggle_callback" => "",
+    "toggle_for_hosts" => [],
     "position" => array(
         "x" => 10,
         "y" => 10,
