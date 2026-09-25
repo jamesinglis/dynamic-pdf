@@ -1,19 +1,49 @@
-# Dynamic PDF generator
+# Dynamic PDF Generator
+
+**Version 1.0.0** | PHP 8.2+
 
 * Author: James Inglis <hello@jamesinglis.no>
 * URL: https://github.com/jamesinglis/dynamic-pdf
 * License: MIT (i.e. do whatever you want with it, but no warranty!)
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [New in 1.0.0](#new-in-100)
+- [Callbacks](#callbacks)
+- [Helpers](#helpers)
+- [Version History](#version-history)
 
 ## Overview
 
-This PHP-based solution generates a dynamic PDF from a PDF base ("template") and one of more dynamic text blocks, based on URL arguments. This solution has been the basis for dynamic certificates and posters. The URL argument structure is open by design, to allow easy population by mail merge tools.
+This PHP-based solution generates a dynamic PDF from a PDF base ("template") and one or more dynamic text blocks, based on URL arguments. This solution has been the basis for dynamic certificates and posters. The URL argument structure is open by design, to allow easy population by mail merge tools.
 
-For example: http://example.com/?name=James%20Inglis - the "name" argument can be validated and sanitized and used as a placeholder replacement value in the dynamic text block configuration.
+For example: `https://example.com/?name=James%20Inglis` - the "name" argument can be validated and sanitized and used as a placeholder replacement value in the dynamic text block configuration.
 
 ## Features
 
-* TBA
+* JSON-based configuration with config-override support
+* Multi-environment support (dev/prod) with environment-specific URLs
+* Interactive testing interface (test-links.php)
+* Flexible callback system for validation, sanitization, and formatting
+* PDF template switching via callbacks
+* Text and image block positioning with fit-to-width support
+* Caching with config-aware cache invalidation
+* CLI key rotation utility
+* Host-based certificate variants
+
+## Requirements
+
+* **PHP 8.2+** with extensions:
+  * `intl` (for NumberFormatter)
+  * `mbstring` (for character encoding)
+  * `gd` or `imagick` (for image processing)
+* Composer for dependency management
+* Apache with mod_rewrite (for .htaccess security)
 
 ## Getting Started
 
@@ -213,12 +243,92 @@ Helper functions that don't belong anywhere else, but it's worth documenting:
 
 Strip the accents from the string and replace with the nearest ASCII equivalent (e.g. "Jämés" becomes "James").
 
-## To Do in Future
-(if there's a demand for it)
+## New in 1.0.0
 
-* Clean up the code so it's cleaner and more extensible
-    * Not the best coding - this started as a quick and dirty solution!
+### Configuration Override System
 
+Create a `config-override.json` file for local development settings without modifying the main config:
+
+```json
+{
+  "global": {
+    "debug_mode": true,
+    "show_borders": true,
+    "cache_dynamic_files": false
+  }
+}
+```
+
+### Multi-Environment Support
+
+Configure different environments (dev/prod) with their own URLs and access keys:
+
+```json
+{
+  "environments": {
+    "dev": {
+      "url": "https://project.ddev.site:8443",
+      "label": "Development",
+      "expose": true,
+      "visible": true,
+      "key": ""
+    },
+    "prod": {
+      "url": "https://certificate.example.com",
+      "label": "Production",
+      "expose": true,
+      "visible": true,
+      "key": "YOUR_SECRET_KEY"
+    }
+  }
+}
+```
+
+### Test Links Interface
+
+Access `/test-links.php` for an interactive Vue.js-based testing interface that:
+- Generates test URLs from `test_versions` configuration
+- Supports multiple environments with key-based authentication
+- Provides email-friendly formatted text with copy buttons
+- Includes dark mode support
+
+### Host Active Flag
+
+Hosts can now be marked as inactive, redirecting visitors to a specified location:
+
+```json
+{
+  "hosts": {
+    "default": {
+      "active": true,
+      "redirect_location": "https://example.com"
+    }
+  }
+}
+```
+
+### Key Rotation Utility
+
+Use `php rotate-keys.php` from the command line to rotate authentication keys for all environments and the cache expiry key. Old keys are preserved with timestamps.
+
+### PHP 8.2+ Compatibility
+
+- Replaced deprecated `money_format()` with `NumberFormatter`
+- Replaced deprecated `utf8_decode()` with `mb_convert_encoding()`
+- Updated Symfony HttpFoundation to 6.4
+- Updated Guzzle to 7.x
+- Added arrow function syntax for callbacks
+
+### Security Improvements
+
+- Added `.htaccess` with Apache 2.4+ security directives
+- Blocks access to sensitive files (.json, .md, .lock, etc.)
+- Restricts PHP execution to index.php and test-links.php only
+- Security headers for XSS and clickjacking protection
+
+### CLAUDE.md
+
+Added AI assistant guidance document for Claude Code integration.
 
 ## Questions and Answers
 
@@ -233,7 +343,42 @@ The sanitize function will run before the variable name is used in the cache fil
 A mutate function will affect all instances that a value is used. At present, there is no conditional mutation so any one-off formatting needs to be done in the text output.
 
 
-## Version history
+## Version History
+
+### 1.0.0 (2025-12-28)
+**Major update with PHP 8.2+ compatibility and new features**
+
+* **Breaking Changes:**
+  * Requires PHP 8.2+ (drops support for PHP 7.x)
+  * Updated Symfony HttpFoundation to 6.4 (changed `query->filter()` signature)
+  * Updated Guzzle to 7.x (changed request API)
+
+* **New Features:**
+  * Configuration override system (`config-override.json`)
+  * Multi-environment support with `environments` section
+  * Test versions configuration for `test-links.php`
+  * Interactive Vue.js testing interface (`test-links.php`)
+  * CLI key rotation utility (`rotate-keys.php`)
+  * Host `active` flag with redirect support
+  * `toggle_for_hosts` support in text blocks
+  * Config hash in cache filenames for automatic invalidation
+  * Debug output for failed validation in debug mode
+
+* **PHP 8.2+ Compatibility:**
+  * Replaced deprecated `money_format()` with `NumberFormatter`
+  * Replaced deprecated `utf8_decode()` with `mb_convert_encoding()`
+  * Added arrow function syntax for filter callbacks
+  * Added type hints to function parameters
+
+* **Security:**
+  * Added `.htaccess` with Apache 2.4+ directives
+  * Blocks access to sensitive configuration files
+  * Security headers for XSS and clickjacking protection
+
+* **Documentation:**
+  * Added `CLAUDE.md` for AI assistant integration
+  * Updated `config-example.json` with all new sections
+  * Comprehensive README update
 
 ### 0.4.1 (2018-11-20)
 * Adds ability to validate an argument for certain hosts only

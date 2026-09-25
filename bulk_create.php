@@ -2,7 +2,7 @@
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Guzzle\Http\Client;
+use GuzzleHttp\Client;
 
 $client = new Client();
 
@@ -39,7 +39,7 @@ if (file_exists($file_path . $filename)) {
 
             echo $count2 . sprintf(" Generating certificate for %s...", $data[0] . " " . $data[1]) . PHP_EOL;
 //        echo $url . PHP_EOL;
-            $client->get($url)->send();
+            $client->get($url);
             fputcsv($fho, $output_data, ",", '"');
         }
     }

@@ -3,6 +3,7 @@
 $default_host = array(
     "slug" => "",
     "default" => false,
+    "active" => false,
     "pdf_template" => "",
     "pdf_template_callback" => "",
     "pdf_orientation" => "P",

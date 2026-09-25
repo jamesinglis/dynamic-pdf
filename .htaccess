@@ -1,0 +1,46 @@
+# Set default directory index
+DirectoryIndex index.php
+
+# Enable rewrite engine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Block access to .git, cache, vendor, docs, .ddev directories
+    RewriteRule ^(\.git|cache|vendor|docs|\.ddev)(/.*)?$ - [F,L]
+
+    # Block access to resources directory
+    RewriteRule ^resources(/.*)?$ - [F,L]
+
+    # Block access to markdown files
+    RewriteRule \.(md|MD)$ - [F,L]
+
+    # Block access to configuration and other sensitive files
+    RewriteRule \.(json|lock|yaml|yml|log)$ - [F,L]
+</IfModule>
+
+# Block access to all PHP files by default
+<FilesMatch "\.php$">
+    Require all denied
+</FilesMatch>
+
+# Allow access to specific PHP files only
+<FilesMatch "^(index|test-links)\.php$">
+    Require all granted
+</FilesMatch>
+
+# Prevent directory browsing
+Options -Indexes
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Set proper MIME type for PDF files
+<IfModule mod_mime.c>
+    AddType application/pdf .pdf
+</IfModule>

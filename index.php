@@ -1,32 +1,27 @@
 <?php
 
-$config = false;
-if (file_exists(__DIR__ . '/config.json')) {
-    $config = json_decode(file_get_contents(__DIR__ . '/config.json'), true);
-}
+require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/helpers.php';
 
-if (!$config) {
-    die("Could not load configuration file.");
-}
+$config = load_config();
 
-if ($config["global"]["debug_mode"]) {
+if ($config['global']['debug_mode']) {
     error_reporting(-1);
     ini_set('display_errors', 'on');
     ini_set('error_reporting', E_ALL);
 }
 
-setlocale(LC_ALL, $config["global"]["locale"]);
+setlocale(LC_ALL, $config['global']['locale']);
 
-define('FPDF_FONTPATH', __DIR__ . '/resources/fonts');
+const FPDF_FONTPATH = __DIR__ . '/resources/fonts';
 
-require __DIR__ . '/vendor/autoload.php';
-require __DIR__ . '/helpers.php';
 require __DIR__ . '/defaults.php';
 require __DIR__ . '/callbacks.php';
 require __DIR__ . '/custom-callbacks.php';
 
-use setasign\Fpdi\Fpdi;
+use setasign\Fpdi\PdfParser\StreamReader;
 use Symfony\Component\HttpFoundation\Request;
+use setasign\Fpdi\Fpdi;
 
 foreach ($config["hosts"] as &$host) {
     $host = array_merge($default_host, $host);
@@ -56,10 +51,16 @@ if (array_key_exists($host, $config["hosts"])) {
 }
 
 if ($host_exists === false) {
-    die("Default host configuration not found.");
+    die('Default host configuration not found.');
 }
 
-$config["global"]["current_host"] = $host;
+$config['global']['current_host'] = $host;
+
+// If this host is not active, redirect to the specified location
+if ($config['hosts'][$host]['active'] === false) {
+    header('Location: ' . $config['hosts'][$host]['redirect_location']);
+    exit();
+}
 
 $request = Request::createFromGlobals();
 
@@ -67,28 +68,28 @@ $url_arguments = array();
 $valid_arguments = true;
 $cache_filename = array($config["hosts"][$host]["slug"]);
 
-foreach ($config["url_arguments"] as $url_argument) {
+foreach ($config['url_arguments'] as $url_argument) {
     $url_argument = array_merge($default_url_argument, $url_argument);
-    $argument_name = $url_arguments[$url_argument["argument"]]["name"] = $url_argument["argument"];
+    $argument_name = $url_arguments[$url_argument['argument']]['name'] = $url_argument['argument'];
     $filter_options = array();
     switch ($url_argument['type']) {
-        case "integer":
+        case 'integer':
             $filter_type = FILTER_SANITIZE_NUMBER_INT;
             break;
-        case "float":
+        case 'float':
             $filter_type = FILTER_SANITIZE_NUMBER_FLOAT;
             $filter_options = array('flags' => FILTER_FLAG_ALLOW_FRACTION);
             break;
-        case "boolean":
+        case 'boolean':
             $filter_type = FILTER_CALLBACK;
-            $filter_options = array('options' => "sanitize_boolean_filter");
+            $filter_options = array('options' => fn($input) => call_user_func('sanitize_boolean_filter', $input));
             break;
-        case "custom":
+        case 'custom':
             $filter_type = FILTER_CALLBACK;
-            $filter_options = array('options' => $url_argument["sanitize_callback"]);
+            $filter_options = array('options' => fn($input) => call_user_func($url_argument['sanitize_callback'], $input));
             break;
         default:
-            $filter_type = FILTER_SANITIZE_STRING;
+            $filter_type = FILTER_SANITIZE_SPECIAL_CHARS;
     }
 
     $default_value = $url_argument['default'];
@@ -96,34 +97,42 @@ foreach ($config["url_arguments"] as $url_argument) {
         $default_value = call_user_func($url_argument['default_callback'], $url_argument);
     }
 
-    $url_arguments[$argument_name]["active"] = $url_arguments[$argument_name]["original"] = $request->query->filter($argument_name, $default_value, false, $filter_type, $filter_options);
+    $url_arguments[$argument_name]['active'] = $url_arguments[$argument_name]['original'] = $request->query->filter($argument_name, $default_value, $filter_type, $filter_options);
 
     // If there's a validation callback, run it and flag if it returns false
-    if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]["active"], $url_argument) === false
+    if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]['active'], $url_argument) === false
         && (empty($url_argument['validate_for_hosts']) || in_array($host, $url_argument['validate_for_hosts']))) {
         $valid_arguments = false;
     }
 
     // If there's a mutation callback, run it and return the value
     if (!empty($url_argument['mutate_callback']) && is_callable($url_argument['mutate_callback'])) {
-        $url_arguments[$argument_name]["active"] = call_user_func($url_argument['mutate_callback'], $url_arguments[$argument_name]["active"], $url_argument);
+        $url_arguments[$argument_name]['active'] = call_user_func($url_argument['mutate_callback'], $url_arguments[$argument_name]['active'], $url_argument);
     }
 
     // We'll build the cache filename from the arguments before they've been mutated
-    $cache_filename[] = $url_arguments[$argument_name]["original"];
+    $cache_filename[] = $url_arguments[$argument_name]['original'];
 }
 
 // If we're validating the arguments and any of the above have failed their validation callback, now is the time to bail out to the redirect location
-if ($config["global"]["validate_arguments"] && $valid_arguments === false) {
-    header("Location: " . $config["hosts"][$host]["redirect_location"]);
+if ($config['global']['validate_arguments'] && $valid_arguments === false) {
+    if ($config['global']['debug_mode']) {
+        echo '<pre>';
+        echo 'Invalid arguments';
+        var_dump($url_arguments);
+        echo '</pre>';
+    } else {
+        header('Location: ' . $config['hosts'][$host]['redirect_location']);
+    }
     exit();
 }
 
-$filename = preg_replace("/[^A-Za-z0-9-.]+/", "_", implode("-", $cache_filename)) . ".pdf";
+$cache_filename[] = substr(md5(json_encode($config)), 0, 6);
+$filename = preg_replace('/[^A-Za-z0-9-.]+/', '_', implode('-', $cache_filename)) . '.pdf';
 $file_path = __DIR__ . '/cache/' . $filename;
 
 // If a cached file already exists, just output that to the browser
-if ($config["global"]["cache_dynamic_files"] && file_exists($file_path)) {
+if ($config['global']['cache_dynamic_files'] && file_exists($file_path) && $url_arguments['cache']['active']) {
     // We send to a browser
     header('Content-Type: application/pdf');
     header('Content-Disposition: inline; filename="' . $filename . '"');
@@ -142,7 +151,7 @@ if (!empty($config["hosts"][$host]['pdf_template_callback']) && is_callable($con
     $pdf_template_file = call_user_func($config["hosts"][$host]['pdf_template_callback'], $config["hosts"][$host], $url_arguments);
 }
 
-$pdf_stream = new \setasign\Fpdi\PdfParser\StreamReader(fopen(__DIR__ . '/' . $pdf_template_file, 'r'));
+$pdf_stream = new StreamReader(fopen(__DIR__ . '/' . $pdf_template_file, 'r'));
 
 $pdf->setSourceFile($pdf_stream);
 
@@ -168,7 +177,7 @@ foreach ($config["text_blocks"] as $text_block) {
     }
 
     // If there's a toggle callback, run it and if it returns false, skip further processing
-    if (!empty($text_block['toggle_callback']) && is_callable($text_block['toggle_callback']) && call_user_func($text_block['toggle_callback'], $text_block, $url_arguments, $host, $config["hosts"][$host]) === false) {
+    if (!empty($text_block['toggle_callback']) && is_callable($text_block['toggle_callback']) && call_user_func($text_block['toggle_callback'], $text_block, $url_arguments, $host, $config['hosts'][$host]) === false || (!empty($text_block['toggle_for_hosts']) && !in_array($host, $text_block['toggle_for_hosts']))) {
         continue;
     }
 

@@ -33,9 +33,20 @@ function sanitize_custom_callback($input)
  * @param array $url_argument
  * @return bool
  */
-function validate_custom_callback($input, $url_argument)
+function validate_custom_callback($input, array $url_argument)
 {
     return !empty($input);
+}
+
+/**
+ * Host level custom validation callback
+ *
+ * @param array $url_arguments
+ * @return bool
+ */
+function host_validate_custom_callback(array $url_arguments)
+{
+    return array_key_exists('name', $url_arguments);
 }
 
 /**
@@ -48,6 +59,19 @@ function validate_custom_callback($input, $url_argument)
 function mutate_custom_callback($input, $url_argument)
 {
     return $input;
+}
+
+/**
+ * Custom callback to validate all URL arguments
+ *
+ * @param array $host_configuration_array
+ * @param array $url_arguments_array
+ * @param boolean $valid_arguments
+ * @return boolean Whether or not the URL arguments are valid
+ */
+function validate_arguments_custom_callback($host_configuration_array, $url_arguments_array, $valid_arguments)
+{
+    return $valid_arguments;
 }
 
 /**
@@ -272,12 +296,15 @@ function validate_float_under_999999($input)
  */
 function mutate_dollar_amount($input, $url_argument)
 {
+    $nf = new \NumberFormatter("en-AU", \NumberFormatter::CURRENCY);
+    $nf->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 0);
+    $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
     // If the amount is .00, omit it
     if (intval($input) == floatval($input)) {
-        return money_format('%.0n', $input);
+        $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 0);
     }
 
-    return money_format('%.2n', $input);
+    return $nf->format($input);
 }
 /**
  * Formats a number as a misc figure
@@ -288,10 +315,13 @@ function mutate_dollar_amount($input, $url_argument)
  */
 function mutate_numeric($input, $url_argument)
 {
+    $nf = new \NumberFormatter("en-AU", \NumberFormatter::DECIMAL);
+    $nf->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 0);
+    $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
     // If the amount is .00, omit it
     if (intval($input) == floatval($input)) {
-        return number_format($input, 0);
+        $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 0);
     }
 
-    return number_format($input, 0);
+    return $nf->format($input);
 }

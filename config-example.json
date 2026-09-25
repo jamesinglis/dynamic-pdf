@@ -6,7 +6,31 @@
     "cache_dynamic_files": false,
     "cache_expiry_key": "KbkfiI1I7O5mFAkA9OYuHISE",
     "cache_expiry_after": 2,
-    "locale": "en_AU"
+    "locale": "en_AU",
+    "expose_test_links": true,
+    "allow_toggle_self_link": true
+  },
+  "environments": {
+    "dev": {
+      "url": "https://dynamic-pdf.ddev.site:8443",
+      "label": "Development",
+      "expose": true,
+      "visible": true,
+      "key": ""
+    },
+    "prod": {
+      "url": "https://example.com",
+      "label": "Production",
+      "expose": true,
+      "visible": true,
+      "key": "CHANGE_THIS_KEY"
+    }
+  },
+  "test_versions": {
+    "default": {
+      "name": "Test User",
+      "amount": 1234
+    }
   },
   "bulk_create": {
     "file_path": "/resources/",
@@ -19,7 +43,9 @@
       "pdf_template": "resources/blank.pdf",
       "pdf_template_callback": "",
       "pdf_orientation": "P",
-      "redirect_location": "http://www.google.com"
+      "redirect_location": "http://www.google.com",
+      "default": true,
+      "active": true
     }
   },
   "url_arguments": [
