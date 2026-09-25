@@ -1,5 +1,9 @@
 <?php
 
+// Never show errors to visitors: they disclose server paths. Debug mode turns this back on below.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/helpers.php';
 
@@ -97,7 +101,13 @@ foreach ($config['url_arguments'] as $url_argument) {
         $default_value = call_user_func($url_argument['default_callback'], $url_argument);
     }
 
-    $url_arguments[$argument_name]['active'] = $url_arguments[$argument_name]['original'] = $request->query->filter($argument_name, $default_value, $filter_type, $filter_options);
+    // An array value (e.g. ?name[]=x) makes filter() throw, so fall back to the default and fail validation
+    if (is_array($request->query->all()[$argument_name] ?? null)) {
+        $url_arguments[$argument_name]['active'] = $url_arguments[$argument_name]['original'] = $default_value;
+        $valid_arguments = false;
+    } else {
+        $url_arguments[$argument_name]['active'] = $url_arguments[$argument_name]['original'] = $request->query->filter($argument_name, $default_value, $filter_type, $filter_options);
+    }
 
     // If there's a validation callback, run it and flag if it returns false
     if (!empty($url_argument['validate_callback']) && is_callable($url_argument['validate_callback']) && call_user_func($url_argument['validate_callback'], $url_arguments[$argument_name]['active'], $url_argument) === false

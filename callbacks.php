@@ -296,11 +296,17 @@ function validate_float_under_999999($input)
  */
 function mutate_dollar_amount($input, $url_argument)
 {
+    // Blank stays blank; anything else is cast, since format() throws on a non-numeric string
+    if ($input === '' || $input === null) {
+        return '';
+    }
+    $input = floatval($input);
+
     $nf = new \NumberFormatter("en-AU", \NumberFormatter::CURRENCY);
     $nf->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 0);
     $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
     // If the amount is .00, omit it
-    if (intval($input) == floatval($input)) {
+    if (intval($input) == $input) {
         $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 0);
     }
 
@@ -315,11 +321,17 @@ function mutate_dollar_amount($input, $url_argument)
  */
 function mutate_numeric($input, $url_argument)
 {
+    // Blank stays blank; anything else is cast, since format() throws on a non-numeric string
+    if ($input === '' || $input === null) {
+        return '';
+    }
+    $input = floatval($input);
+
     $nf = new \NumberFormatter("en-AU", \NumberFormatter::DECIMAL);
     $nf->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 0);
     $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
     // If the amount is .00, omit it
-    if (intval($input) == floatval($input)) {
+    if (intval($input) == $input) {
         $nf->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 0);
     }
 
