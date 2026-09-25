@@ -1,6 +1,6 @@
 # Dynamic PDF Generator
 
-**Version 1.0.0** | PHP 8.2+
+**Version 1.0.1** | PHP 8.2+
 
 * Author: James Inglis <hello@jamesinglis.no>
 * URL: https://github.com/jamesinglis/dynamic-pdf
@@ -344,6 +344,11 @@ A mutate function will affect all instances that a value is used. At present, th
 
 
 ## Version History
+
+### 1.0.1 (2026-09-25)
+* Turns `display_errors` off before anything loads, so errors never disclose server paths (debug mode still enables it)
+* Array-valued URL arguments (e.g. `?name[]=x`) no longer throw; they fall back to the default and fail validation
+* `mutate_dollar_amount` and `mutate_numeric` no longer throw on blank or non-numeric input under PHP 8
 
 ### 1.0.0 (2025-12-28)
 **Major update with PHP 8.2+ compatibility and new features**
