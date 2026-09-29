@@ -1,6 +1,5 @@
 vendor
 cache/*.pdf
-composer.lock
 composer.phar
 resources/recipients.csv
 resources/recipients_output.csv
@@ -8,3 +7,5 @@ config.local.php
 .DS_Store
 .ddev/
 config-override.json
+.claude/
+.phpunit.cache
