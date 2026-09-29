@@ -143,3 +143,79 @@ function host_arguments_valid(bool $arguments_valid, array $host_configuration, 
 
     return call_user_func($callback, $url_arguments, $host_configuration, $host_name) !== false;
 }
+
+/**
+ * Find the environment whose URL host matches the request host
+ *
+ * Case-insensitive; the request host may carry the URL's port (ddev's ":8443"). Entries without a usable URL are skipped.
+ *
+ * @param array $environments the config's "environments"
+ * @param string $host the request host ($_SERVER['HTTP_HOST'])
+ * @return string the environment name, or '' when the host is not listed
+ */
+function environment_for_host(array $environments, string $host): string
+{
+    $host = strtolower($host);
+    if ($host === '') {
+        return '';
+    }
+
+    foreach ($environments as $name => $environment) {
+        if (!is_array($environment) || !is_string($environment['url'] ?? null)) {
+            continue;
+        }
+
+        $parsed = parse_url($environment['url']);
+        if (!is_array($parsed) || !isset($parsed['host'])) {
+            continue;
+        }
+
+        $environment_host = strtolower($parsed['host']);
+        $candidates = [$environment_host];
+        if (isset($parsed['port'])) {
+            $candidates[] = $environment_host . ':' . $parsed['port'];
+        }
+
+        if (in_array($host, $candidates, true)) {
+            return (string) $name;
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Whether test-links.php may be shown for this request
+ *
+ * A listed host takes its own environment's key, or is open when that key is empty (ddev). Any other host needs
+ * one of the configured keys, and is closed when no environment has a key.
+ *
+ * @param array $environments the config's "environments"
+ * @param string $host the request host ($_SERVER['HTTP_HOST'])
+ * @param mixed $provided_key $_GET['key']; anything but a string counts as no key
+ * @return bool
+ */
+function test_links_access_allowed(array $environments, string $host, mixed $provided_key): bool
+{
+    $provided_key = is_string($provided_key) ? $provided_key : '';
+
+    $listed = environment_for_host($environments, $host);
+    if ($listed !== '') {
+        $key = is_string($environments[$listed]['key'] ?? null) ? $environments[$listed]['key'] : '';
+
+        return $key === '' || ($provided_key !== '' && hash_equals($key, $provided_key));
+    }
+
+    if ($provided_key === '') {
+        return false;
+    }
+
+    foreach ($environments as $environment) {
+        $key = is_array($environment) && is_string($environment['key'] ?? null) ? $environment['key'] : '';
+        if ($key !== '' && hash_equals($key, $provided_key)) {
+            return true;
+        }
+    }
+
+    return false;
+}

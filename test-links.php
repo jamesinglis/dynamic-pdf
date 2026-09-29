@@ -18,7 +18,8 @@ declare(strict_types=1);
  *
  * Security:
  * - Access controlled by global.expose_test_links configuration setting
- * - Optional key-based authentication via expose_test_links_key
+ * - Key check: a host listed in environments needs its own key (none if the key is empty, e.g. ddev);
+ *   any other host needs one of the configured keys, and is closed when no environment has a key
  * - Two-tier path filtering: expose (security) and visible (UI) flags with Vue.js controls
  *
  * Configuration Dependencies:
@@ -67,33 +68,19 @@ try {
     }
 
     $current_host = $_SERVER['HTTP_HOST'] ?? '';
-    $current_platform_key = '';
-    $current_platform_env = '';
-    $environments = $config['environments'] ?? [];
+    $environments = is_array($config['environments'] ?? null) ? $config['environments'] : [];
+    // Only well-formed entries reach the rest of the page
+    $environments = array_filter($environments, fn($env_config) => is_array($env_config) && is_string($env_config['url'] ?? null));
 
-    if (!empty($environments)) {
-        foreach ($environments as $env => $env_config) {
-            $url = $env_config['url'];
-            $parsed_url = parse_url($url);
-
-            if ($parsed_url && isset($parsed_url['host']) && $parsed_url['host'] === $current_host) {
-                $current_platform_env = $env;
-                $current_platform_key = $env_config['key'] ?? '';
-                break;
-            }
-        }
+    // A listed host takes its own key (open when empty); every other host needs one of the configured keys
+    if (!test_links_access_allowed($environments, $current_host, $_GET['key'] ?? '')) {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>Not Found</h1><p>The requested resource could not be found.</p></body></html>';
+        exit;
     }
 
-    if (!empty($current_platform_key)) {
-        $provided_key = $_GET['key'] ?? '';
-
-        if (empty($provided_key) || $provided_key !== $current_platform_key) {
-            http_response_code(404);
-            header('Content-Type: text/html; charset=utf-8');
-            echo '<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>Not Found</h1><p>The requested resource could not be found.</p></body></html>';
-            exit;
-        }
-    }
+    $current_platform_env = environment_for_host($environments, $current_host);
 
     // PATH FILTERING & URL PARAMETERS
     $exposed_paths = [];
@@ -190,6 +177,9 @@ try {
             foreach ($versions as $version_key => $version_params) {
                 $query_params = [];
                 foreach ($version_params as $param_key => $param_value) {
+                    if (in_array($param_key, ['label', 'for_hosts'], true)) {
+                        continue; // metadata, not URL arg
+                    }
                     if ($param_value !== null && $param_value !== '') {
                         $query_params[] = urlencode($param_key) . '=' . urlencode((string)$param_value);
                     }
@@ -469,7 +459,7 @@ try {
                 ];
 
                 foreach ($self_links as $env => $url):
-                    $colors = $env_colors[$env] ?? $env_colors['default'];
+                    $colors = $env_colors[str_starts_with((string) $env, 'prod') ? 'prod' : (str_starts_with((string) $env, 'dev') ? 'dev' : 'default')];
                     $label = $path_configs[$env]['label'] ?? ucfirst($env);
                     ?>
                     <div v-if="visiblePaths.includes('<?php echo $env; ?>')" class="<?php echo $colors['bg']; ?> border <?php echo $colors['border']; ?> rounded-lg p-4">
@@ -567,7 +557,7 @@ try {
 
                                         foreach ($link_data as $env => $url):
                                             if (!is_string($url)) continue; // Skip non-URL values
-                                            $colors = $env_colors[$env] ?? $env_colors['default'];
+                                            $colors = $env_colors[str_starts_with((string) $env, 'prod') ? 'prod' : (str_starts_with((string) $env, 'dev') ? 'dev' : 'default')];
                                             $label = $path_configs[$env]['label'] ?? ucfirst($env);
                                             ?>
                                             <div v-if="visiblePaths.includes('<?php echo $env; ?>')"
@@ -1149,7 +1139,11 @@ try {
                         containerClasses: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
                     }
                 };
-                return colorMap[env] || colorMap['default'];
+                // Match any prod* environment to green and any dev* to yellow,
+                // so multiple production hosts (prod_global, prod_uk, ...) share the prod colour.
+                const colorKey = typeof env === 'string' && env.startsWith('prod') ? 'prod'
+                    : (typeof env === 'string' && env.startsWith('dev') ? 'dev' : 'default');
+                return colorMap[colorKey] || colorMap['default'];
             },
             // Dynamic URL Generator methods
             getFieldValidationState(key) {
