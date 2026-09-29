@@ -84,4 +84,54 @@ final class SyncCoreCliTest extends TestCase
         [$status] = $this->cli('--bogus');
         $this->assertSame(2, $status);
     }
+
+    public function testReleaseCliProtectsNotesAndChecksMappedTemplate(): void
+    {
+        $upstream = $this->dir . '/upstream';
+        $instance = $this->dir . '/instance';
+        mkdir($upstream);
+        mkdir($instance);
+        foreach (array_merge(SyncCore::CORE_FILES, ['.gitignore', 'bin/SyncCore.php', 'bin/sync-core']) as $path) {
+            $source = $path === 'CLAUDE.md' ? SyncCore::INSTANCE_CLAUDE_TEMPLATE : $path;
+            if (!is_dir(dirname($upstream . '/' . $source))) {
+                mkdir(dirname($upstream . '/' . $source), 0775, true);
+            }
+            copy(__DIR__ . '/../' . $source, $upstream . '/' . $source);
+        }
+        file_put_contents($upstream . '/CLAUDE.md', 'upstream-only guidance');
+        $git = 'git -C ' . escapeshellarg($upstream);
+        foreach (['init -q', 'add -A', '-c user.name=Test -c user.email=test@example.com commit -qm fixture', 'tag 1.1.1'] as $args) {
+            exec($git . ' ' . $args . ' 2>&1', $output, $status);
+            $this->assertSame(0, $status, implode("\n", $output));
+        }
+        $run = function (string ...$args) use ($upstream): array {
+            $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($upstream . '/bin/sync-core');
+            foreach ($args as $arg) {
+                $command .= ' ' . escapeshellarg($arg);
+            }
+            exec($command . ' 2>/dev/null', $output, $status);
+            return [$status, implode("\n", $output)];
+        };
+        file_put_contents($instance . '/CLAUDE.md', 'campaign notes');
+        [$status] = $run('--tag=1.1.1', '--force', $instance);
+        $this->assertSame(2, $status);
+        $this->assertFileDoesNotExist($instance . '/index.php');
+        rename($instance . '/CLAUDE.md', $instance . '/CLAUDE.local.md');
+        [$status, $output] = $run('--tag=1.1.1', $instance);
+        $this->assertSame(0, $status, $output);
+        $this->assertStringContainsString('14 core files', $output);
+        $this->assertSame('campaign notes', file_get_contents($instance . '/CLAUDE.local.md'));
+        [$status, $output] = $run('--check', '--tag=1.1.1', $instance);
+        $this->assertSame(0, $status, $output);
+        [$status, $json] = $run('--manifest', '--tag=1.1.1');
+        $this->assertSame(0, $status);
+        $manifestPath = $this->dir . '/manifest.json';
+        file_put_contents($manifestPath, $json);
+        [$status, $output] = $run('--check', '--manifest=' . $manifestPath, $instance);
+        $this->assertSame(0, $status, $output);
+        file_put_contents($instance . '/CLAUDE.md', 'drifted guidance');
+        [$status, $output] = $run('--check', '--manifest=' . $manifestPath, $instance);
+        $this->assertSame(1, $status);
+        $this->assertStringContainsString('drift: CLAUDE.md', $output);
+    }
 }

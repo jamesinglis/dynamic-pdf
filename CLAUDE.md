@@ -155,14 +155,16 @@ php expire-cache.php
 Every instance runs byte-identical core files from one release tag. `bin/sync-core` copies them from the tag (never the working tree) and checks for drift:
 
 ```bash
-bin/sync-core --tag=1.1.0 ../s4bc2024-certificate                 # sync a working tree; never commits
+bin/sync-core --tag=1.1.1 ../s4bc2024-certificate                 # sync a working tree; never commits
 bin/sync-core --check ../*-certificate                             # drift report, exit 1 if any
 bin/sync-core --check --ref=2023 ../tdr2024-certificate            # a deploy branch, without checking it out
 bin/sync-core --manifest > manifest.json                           # then, on the server (no git needed):
 php sync-core --check --manifest=manifest.json ~/applications/{app}/public_html
 ```
 
-The core list is `SyncCore::CORE_FILES` in `bin/SyncCore.php`; everything else (`config.json`, `config-override.json`, `custom-callbacks.php`, `resources/`, `CLAUDE.md`, `tests/`) is instance-owned. Sync also deletes files dropped from core (`bulk_create.php`), writes `.dynamic-pdf-version.json` (blocked by `.htaccess`), adds upstream's `.gitignore` lines and removes any `composer.lock` ignore. It refuses the upstream repo, uncommitted changes to core files, and names that collide with a core file by case only (`README.md` vs `readme.md`).
+The core list is `SyncCore::CORE_FILES` in `bin/SyncCore.php`; everything else (`config.json`, `config-override.json`, `custom-callbacks.php`, `resources/`, `CLAUDE.local.md`, `tests/`) is instance-owned. From 1.1.1, instance `CLAUDE.md` comes from the tag's `templates/instance-CLAUDE.md`, not this upstream guidance file. Move each instance's old notes to a tracked `CLAUDE.local.md` before syncing; the notes guard applies even with `--force`. Older tags retain their thirteen-file core and leave instance `CLAUDE.md` alone. Sync also deletes files dropped from core (`bulk_create.php`), writes `.dynamic-pdf-version.json` (blocked by `.htaccess`), adds upstream's `.gitignore` lines and removes any `composer.lock` ignore. It refuses the upstream repo, uncommitted changes to core files, and names that collide with a core file by case only (`README.md` vs `readme.md`).
+
+`CLAUDE.local.md` is tracked only in instances: do not create it or add an ignore rule for it upstream. Claude Code loads it automatically (confirmed in https://code.claude.com/docs/en/memory); no explicit import is needed.
 
 ## Creating a New Project
 

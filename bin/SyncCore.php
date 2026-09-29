@@ -6,14 +6,14 @@ declare(strict_types=1);
  * Copies the dynamic-pdf core files from a release tag into an instance, and checks instances for drift.
  *
  * Every instance runs byte-identical core files from one tag; everything else (config.json, config-override.json,
- * custom-callbacks.php, resources/, CLAUDE.md, tests) is instance-owned and never touched. Used by bin/sync-core.
+ * custom-callbacks.php, resources/, CLAUDE.local.md, tests) is instance-owned and never touched. Used by bin/sync-core.
  * Kept PHP 8.2-compatible so --check can run on the server against a deployed public_html.
  */
 final class SyncCore
 {
     /**
      * Core files, copied byte-for-byte from the tag. An explicit allow-list: upstream also tracks instance-owned
-     * files (config.json, custom-callbacks.php, CLAUDE.md, resources/) and upstream-only ones (tests/, phpunit.xml).
+     * files (config.json, custom-callbacks.php, resources/) and upstream-only ones (tests/, phpunit.xml).
      */
     public const CORE_FILES = [
         'index.php',
@@ -29,7 +29,11 @@ final class SyncCore
         'readme.md',
         'cache/index.php',
         'config-example.json',
+        'CLAUDE.md',
     ];
+
+    /** The upstream project's own CLAUDE.md is not suitable for instances. */
+    public const INSTANCE_CLAUDE_TEMPLATE = 'templates/instance-CLAUDE.md';
 
     /**
      * Files that were core in an earlier release and are deleted from instances (bulk_create.php: D17)
@@ -63,9 +67,14 @@ final class SyncCore
         }
         $files = [];
         foreach (array_merge(self::CORE_FILES, ['.gitignore']) as $path) {
-            [$status, $contents] = self::git($upstream, ['show', $tag . ':' . $path]);
+            // CLAUDE.md first became core in 1.1.1; older releases leave instance notes alone.
+            if ($path === 'CLAUDE.md' && version_compare($tag, '1.1.1', '<')) {
+                continue;
+            }
+            $source = $path === 'CLAUDE.md' ? self::INSTANCE_CLAUDE_TEMPLATE : $path;
+            [$status, $contents] = self::git($upstream, ['show', $tag . ':' . $source]);
             if ($status !== 0) {
-                throw new RuntimeException("Tag {$tag} has no {$path}.");
+                throw new RuntimeException("Tag {$tag} has no {$source}.");
             }
             $files[$path] = $contents;
         }
@@ -91,6 +100,9 @@ final class SyncCore
     {
         $hashes = [];
         foreach (self::CORE_FILES as $path) {
+            if (!array_key_exists($path, $files)) {
+                continue;
+            }
             $hashes[$path] = hash('sha256', $files[$path]);
         }
         return ['version' => $tag, 'files' => $hashes, '.gitignore' => $files['.gitignore']];
@@ -117,8 +129,11 @@ final class SyncCore
         if ($collisions) {
             throw new RuntimeException("{$dir}: " . implode(', ', $collisions) . ' collides by case with a core file; resolve it first (D22).');
         }
+        if (isset($files['CLAUDE.md'])) {
+            self::assertClaudeNotesPreserved($dir, $files['CLAUDE.md']);
+        }
         if (!$force && self::isGitWorktree($dir)) {
-            $dirty = self::dirtyCoreFiles($dir);
+            $dirty = self::dirtyCoreFiles($dir, array_keys($files));
             if ($dirty) {
                 throw new RuntimeException("{$dir}: uncommitted changes to " . implode(', ', $dirty) . '; commit or discard them first (or pass --force).');
             }
@@ -126,6 +141,9 @@ final class SyncCore
 
         $written = [];
         foreach (self::CORE_FILES as $path) {
+            if (!array_key_exists($path, $files)) {
+                continue;
+            }
             $target = $dir . '/' . $path;
             if (!is_dir(dirname($target))) {
                 mkdir(dirname($target), 0775, true);
@@ -156,6 +174,32 @@ final class SyncCore
         }
 
         return ['written' => $written, 'deleted' => $deleted, 'gitignore_changed' => $after !== $before];
+    }
+
+    /** Refuse to erase instance notes, even with --force, before any file is written. */
+    private static function assertClaudeNotesPreserved(string $dir, string $template): void
+    {
+        $path = $dir . '/CLAUDE.md';
+        if (!file_exists($path) && !is_link($path)) {
+            return;
+        }
+        if (is_file($path) && !is_link($path)) {
+            $contents = file_get_contents($path);
+            if ($contents === $template) {
+                return; // Re-sync of the current template.
+            }
+            $markerPath = $dir . '/' . self::MARKER;
+            $marker = is_file($markerPath) ? json_decode(file_get_contents($markerPath), true) : null;
+            $oldHash = is_array($marker) ? ($marker['files']['CLAUDE.md'] ?? null) : null;
+            if (is_string($oldHash) && hash('sha256', $contents) === $oldHash) {
+                return; // Unmodified template from a previous sync.
+            }
+            $local = $dir . '/CLAUDE.local.md';
+            if (is_file($local) && !is_link($local) && file_get_contents($local) === $contents) {
+                return; // An exact copy of the notes has already been preserved.
+            }
+        }
+        throw new RuntimeException("{$dir}: move CLAUDE.md notes to tracked CLAUDE.local.md before syncing (D44); --force cannot bypass this guard.");
     }
 
     /**
@@ -351,9 +395,14 @@ final class SyncCore
         return $status === 0 && realpath(trim($output)) === realpath($dir);
     }
 
-    private static function dirtyCoreFiles(string $dir): array
+    private static function dirtyCoreFiles(string $dir, array $paths): array
     {
-        [, $output] = self::git($dir, array_merge(['status', '--porcelain', '--'], self::CORE_FILES, self::REMOVED_FILES));
+        $paths = array_values(array_intersect(self::CORE_FILES, $paths));
+        // The prescribed git mv stages removal of CLAUDE.md before the replacement is synced.
+        if (!file_exists($dir . '/CLAUDE.md') && !is_link($dir . '/CLAUDE.md')) {
+            $paths = array_values(array_diff($paths, ['CLAUDE.md']));
+        }
+        [, $output] = self::git($dir, array_merge(['status', '--porcelain', '--'], $paths, self::REMOVED_FILES));
         $dirty = [];
         foreach (array_filter(explode("\n", $output), 'strlen') as $line) {
             // Untracked core files are fine to overwrite: there is nothing committed to lose

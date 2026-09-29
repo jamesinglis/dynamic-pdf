@@ -109,8 +109,8 @@ final class TextPipelineTest extends TestCase
     {
         $config = ['global' => ['locale' => 'en_AU.UTF-8']];
 
-        $this->assertSame('1.1.0', DYNAMIC_PDF_VERSION);
-        $this->assertSame(substr(md5('1.1.0' . json_encode($config)), 0, 6), cache_config_hash($config));
+        $this->assertSame('1.1.1', DYNAMIC_PDF_VERSION);
+        $this->assertSame(substr(md5('1.1.1' . json_encode($config)), 0, 6), cache_config_hash($config));
         $this->assertNotSame(substr(md5(json_encode($config)), 0, 6), cache_config_hash($config));
     }
 }

@@ -1,6 +1,6 @@
 # Dynamic PDF Generator
 
-**Version 1.1.0** | PHP 8.2+
+**Version 1.1.1** | PHP 8.2+
 
 * Author: James Inglis <hello@jamesinglis.no>
 * URL: https://github.com/jamesinglis/dynamic-pdf
@@ -363,7 +363,11 @@ Use `php rotate-keys.php` from the command line to rotate authentication keys fo
 
 ### CLAUDE.md
 
-Added AI assistant guidance document for Claude Code integration.
+Instances receive a shared `CLAUDE.md` from `templates/instance-CLAUDE.md` via
+`bin/sync-core`. Keep campaign-specific guidance in a tracked `CLAUDE.local.md`;
+Claude Code loads it automatically. Upstream keeps its own `CLAUDE.md` and does not
+carry or ignore `CLAUDE.local.md`. Move existing notes before syncing: the tool
+refuses to overwrite unmoved notes, even with `--force`.
 
 ## Questions and Answers
 
@@ -379,6 +383,11 @@ A mutate function will affect all instances that a value is used. At present, th
 
 
 ## Version History
+
+### 1.1.1 (2026-09-30)
+* Shared instance `CLAUDE.md` template becomes the fourteenth core file; upstream guidance remains upstream-only
+* Sync refuses to erase instance notes until they move to `CLAUDE.local.md`, including with `--force`; repeated syncs and unmodified template upgrades remain supported
+* Older release tags retain their original thirteen-file sync and leave instance `CLAUDE.md` untouched
 
 ### 1.1.0 (2026-09-29)
 * **Names keep their accents:** text stays UTF-8 through every callback and is converted to cp1252 exactly once, at the render point (`pdf_text()`), so José, Søren and Zoë print as typed; characters cp1252 can't hold are transliterated (Łukasz → Lukasz) or dropped, never printed as "?". Fixes names garbled by the older `custom_utf8_decode` direction

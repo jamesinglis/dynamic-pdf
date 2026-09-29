@@ -3,7 +3,7 @@
 /**
  * The dynamic-pdf core version. Part of the cache key, so each release stops serving PDFs cached by the previous one.
  */
-const DYNAMIC_PDF_VERSION = '1.1.0';
+const DYNAMIC_PDF_VERSION = '1.1.1';
 
 /**
  * Load configuration from config.json with optional config-override.json merge

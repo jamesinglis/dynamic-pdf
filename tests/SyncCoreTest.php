@@ -78,7 +78,7 @@ final class SyncCoreTest extends TestCase
     public function testTagFilesHoldExactlyTheCoreList(): void
     {
         // .gitignore comes along for the superset merge, but is never copied over
-        $this->assertSame(array_merge(SyncCore::CORE_FILES, ['.gitignore']), array_keys(self::$files));
+        $this->assertSame(array_values(array_diff(array_merge(SyncCore::CORE_FILES, ['.gitignore']), ['CLAUDE.md'])), array_keys(self::$files));
     }
 
     public function testTagFilesMatchGitShowByteForByte(): void
@@ -91,7 +91,7 @@ final class SyncCoreTest extends TestCase
 
     public function testCoreListLeavesInstanceOwnedAndUpstreamOnlyFilesOut(): void
     {
-        foreach (['config.json', 'custom-callbacks.php', 'CLAUDE.md', 'phpunit.xml', '.gitignore', 'bulk_create.php', 'config-override.json'] as $path) {
+        foreach (['config.json', 'custom-callbacks.php', 'CLAUDE.local.md', 'phpunit.xml', '.gitignore', 'bulk_create.php', 'config-override.json'] as $path) {
             $this->assertNotContains($path, SyncCore::CORE_FILES, $path);
         }
         foreach (SyncCore::CORE_FILES as $path) {
@@ -118,7 +118,7 @@ final class SyncCoreTest extends TestCase
     {
         $manifest = SyncCore::manifest(self::$files, self::TAG);
         $this->assertSame(self::TAG, $manifest['version']);
-        $this->assertSame(SyncCore::CORE_FILES, array_keys($manifest['files']));
+        $this->assertSame($this->legacyCoreFiles(), array_keys($manifest['files']));
         $this->assertSame(hash('sha256', self::$files['index.php']), $manifest['files']['index.php']);
         $this->assertArrayHasKey('.gitignore', $manifest);
     }
@@ -128,8 +128,8 @@ final class SyncCoreTest extends TestCase
         $this->writeInstanceFiles();
         $result = SyncCore::sync($this->dir, self::$files, self::TAG);
 
-        $this->assertSame(SyncCore::CORE_FILES, $result['written']);
-        foreach (SyncCore::CORE_FILES as $path) {
+        $this->assertSame($this->legacyCoreFiles(), $result['written']);
+        foreach ($this->legacyCoreFiles() as $path) {
             $this->assertSame(self::$files[$path], file_get_contents($this->dir . '/' . $path), $path);
         }
         $report = SyncCore::checkDir($this->dir, SyncCore::manifest(self::$files, self::TAG));
@@ -315,7 +315,7 @@ final class SyncCoreTest extends TestCase
         file_put_contents($this->dir . '/config.json', '{"edited": true}');
 
         $result = SyncCore::sync($this->dir, self::$files, self::TAG);
-        $this->assertSame(SyncCore::CORE_FILES, $result['written']);
+        $this->assertSame($this->legacyCoreFiles(), $result['written']);
     }
 
     public function testSyncNeverCommits(): void
@@ -379,5 +379,129 @@ final class SyncCoreTest extends TestCase
         $this->commitAll();
         $this->expectException(RuntimeException::class);
         SyncCore::checkRef($this->dir, 'no-such-branch', SyncCore::manifest(self::$files, self::TAG));
+    }
+
+    private function legacyCoreFiles(): array
+    {
+        return array_values(array_diff(SyncCore::CORE_FILES, ['CLAUDE.md']));
+    }
+
+    private function releaseFiles(): array
+    {
+        $files = self::$files;
+        $files['helpers.php'] = str_replace("DYNAMIC_PDF_VERSION = '1.1.0'", "DYNAMIC_PDF_VERSION = '1.1.1'", $files['helpers.php']);
+        $files['CLAUDE.md'] = file_get_contents(self::UPSTREAM . '/' . SyncCore::INSTANCE_CLAUDE_TEMPLATE);
+        return $files;
+    }
+
+    public function testReleaseTagReadsDedicatedTemplateNotUpstreamGuidance(): void
+    {
+        $this->initRepo();
+        $files = $this->releaseFiles();
+        foreach ($files as $path => $contents) {
+            if ($path === 'CLAUDE.md') {
+                $path = SyncCore::INSTANCE_CLAUDE_TEMPLATE;
+            }
+            if (!is_dir(dirname($this->dir . '/' . $path))) {
+                mkdir(dirname($this->dir . '/' . $path), 0775, true);
+            }
+            file_put_contents($this->dir . '/' . $path, $contents);
+        }
+        file_put_contents($this->dir . '/CLAUDE.md', 'upstream-only guidance');
+        $this->commitAll();
+        $this->git('tag', '1.1.1');
+        $tagFiles = SyncCore::tagFiles($this->dir, '1.1.1');
+        $this->assertSame($files['CLAUDE.md'], $tagFiles['CLAUDE.md']);
+        $this->assertSame(array_merge(SyncCore::CORE_FILES, ['.gitignore']), array_keys($tagFiles));
+        $manifest = SyncCore::manifest($tagFiles, '1.1.1');
+        $this->assertSame(hash('sha256', $files['CLAUDE.md']), $manifest['files']['CLAUDE.md']);
+
+        $this->git('rm', SyncCore::INSTANCE_CLAUDE_TEMPLATE);
+        $this->commitAll();
+        $this->git('tag', '1.1.2');
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(SyncCore::INSTANCE_CLAUDE_TEMPLATE);
+        SyncCore::tagFiles($this->dir, '1.1.2');
+    }
+
+    public function testLegacySyncLeavesClaudeNotesAndDirtyEditsAlone(): void
+    {
+        $this->initRepo();
+        file_put_contents($this->dir . '/CLAUDE.md', 'campaign notes');
+        $this->commitAll();
+        file_put_contents($this->dir . '/CLAUDE.md', 'edited campaign notes');
+        SyncCore::sync($this->dir, self::$files, self::TAG);
+        $this->assertSame('edited campaign notes', file_get_contents($this->dir . '/CLAUDE.md'));
+    }
+
+    public function testUnmovedNotesAreRefusedEvenWithForceAndUnrelatedLocalNotes(): void
+    {
+        file_put_contents($this->dir . '/CLAUDE.md', 'campaign notes');
+        file_put_contents($this->dir . '/CLAUDE.local.md', 'unrelated notes');
+        foreach ([false, true] as $force) {
+            try {
+                SyncCore::sync($this->dir, $this->releaseFiles(), '1.1.1', $force);
+                $this->fail('Expected notes guard refusal');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('CLAUDE.local.md', $e->getMessage());
+            }
+            $this->assertFileDoesNotExist($this->dir . '/index.php');
+            $this->assertFileDoesNotExist($this->dir . '/' . SyncCore::MARKER);
+            $this->assertSame('campaign notes', file_get_contents($this->dir . '/CLAUDE.md'));
+        }
+    }
+
+    public function testStagedNotesMoveCanBeSyncedAndCheckedOnDeployBranch(): void
+    {
+        $this->initRepo();
+        file_put_contents($this->dir . '/CLAUDE.md', 'campaign notes');
+        $this->commitAll();
+        $this->git('mv', 'CLAUDE.md', 'CLAUDE.local.md');
+        file_put_contents($this->dir . '/CLAUDE.local.md', 'refreshed campaign notes');
+        $files = $this->releaseFiles();
+        SyncCore::sync($this->dir, $files, '1.1.1');
+        $this->assertSame('refreshed campaign notes', file_get_contents($this->dir . '/CLAUDE.local.md'));
+        $this->assertSame($files['CLAUDE.md'], file_get_contents($this->dir . '/CLAUDE.md'));
+        $this->assertSame(14, count(SyncCore::manifest($files, '1.1.1')['files']));
+        $this->commitAll();
+        $this->assertTrue(SyncCore::isClean(SyncCore::checkRef($this->dir, 'HEAD', SyncCore::manifest($files, '1.1.1'))));
+        SyncCore::sync($this->dir, $files, '1.1.1');
+        $this->assertSame('refreshed campaign notes', file_get_contents($this->dir . '/CLAUDE.local.md'));
+    }
+
+    public function testExactBackupAllowsReplacingUntrackedNotes(): void
+    {
+        file_put_contents($this->dir . '/CLAUDE.md', 'campaign notes');
+        file_put_contents($this->dir . '/CLAUDE.local.md', 'campaign notes');
+        SyncCore::sync($this->dir, $this->releaseFiles(), '1.1.1');
+        $this->assertSame('campaign notes', file_get_contents($this->dir . '/CLAUDE.local.md'));
+    }
+
+    public function testEditedTemplateIsProtectedButUnmodifiedTemplateCanUpgrade(): void
+    {
+        $files = $this->releaseFiles();
+        SyncCore::sync($this->dir, $files, '1.1.1');
+        $newFiles = $files;
+        $newFiles['CLAUDE.md'] .= "\nUpdated guidance\n";
+        SyncCore::sync($this->dir, $newFiles, '1.1.2');
+        $this->assertSame($newFiles['CLAUDE.md'], file_get_contents($this->dir . '/CLAUDE.md'));
+        file_put_contents($this->dir . '/CLAUDE.md', $newFiles['CLAUDE.md'] . "\nInstance edits\n");
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('--force cannot bypass');
+        SyncCore::sync($this->dir, $newFiles, '1.1.2', true);
+    }
+
+    public function testClaudeSymlinkIsNeverOverwritten(): void
+    {
+        file_put_contents($this->dir . '/CLAUDE.local.md', 'campaign notes');
+        symlink('CLAUDE.local.md', $this->dir . '/CLAUDE.md');
+        try {
+            SyncCore::sync($this->dir, $this->releaseFiles(), '1.1.1', true);
+            $this->fail('Expected refusal');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('CLAUDE.local.md', $e->getMessage());
+        }
+        $this->assertSame('campaign notes', file_get_contents($this->dir . '/CLAUDE.local.md'));
+        $this->assertTrue(is_link($this->dir . '/CLAUDE.md'));
     }
 }
