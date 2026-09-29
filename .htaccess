@@ -11,8 +11,9 @@ DirectoryIndex index.php
     RewriteCond %{THE_REQUEST} \s/resources$ [NC]
     RewriteRule ^ - [F,L]
 
-    # Block access to .git, cache, vendor, docs, .ddev directories
-    RewriteRule ^(\.git|cache|vendor|docs|\.ddev)(/|$) - [F,L]
+    # Block access to .git, cache, vendor, docs, .ddev and resources directories (decoded, normalised path;
+    # catches requests such as //resources/... that the THE_REQUEST check above does not)
+    RewriteRule ^(\.git|cache|vendor|docs|\.ddev|resources)(/|$) - [F,L]
 
     # Block access to markdown files
     RewriteRule \.(md|MD)$ - [F,L]
