@@ -1,0 +1,125 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/SyncCore.php';
+
+const USAGE = <<<'TXT'
+Usage:
+  bin/sync-core [--tag=TAG] [--force] DIR...             Copy TAG's core files into each instance working tree
+  bin/sync-core --check [--tag=TAG] DIR...               Report drift in each directory against TAG
+  bin/sync-core --check [--tag=TAG] --ref=REF REPO...    Report drift in a committed ref (e.g. a deploy branch)
+  bin/sync-core --check --manifest=FILE DIR...           Same, without git (e.g. a deployed public_html)
+  bin/sync-core --manifest [--tag=TAG]                   Print TAG's manifest as JSON (for --manifest=FILE)
+
+TAG defaults to the newest version tag. Sync never commits; review and commit each instance by hand.
+Exit status: 0 all clean or synced, 1 drift found, 2 usage or refusal.
+
+TXT;
+
+$options = ['check' => false, 'force' => false, 'tag' => null, 'ref' => null, 'manifest' => null, 'print_manifest' => false];
+$dirs = [];
+foreach (array_slice($argv, 1) as $arg) {
+    if ($arg === '--check') {
+        $options['check'] = true;
+    } elseif ($arg === '--force') {
+        $options['force'] = true;
+    } elseif ($arg === '--manifest') {
+        $options['print_manifest'] = true;
+    } elseif (preg_match('/^--(tag|ref|manifest)=(.+)$/', $arg, $match)) {
+        $options[$match[1]] = $match[2];
+    } elseif ($arg === '--help' || $arg === '-h') {
+        fwrite(STDOUT, USAGE);
+        exit(0);
+    } elseif (str_starts_with($arg, '-')) {
+        fwrite(STDERR, "Unknown option {$arg}\n\n" . USAGE);
+        exit(2);
+    } else {
+        $dirs[] = $arg;
+    }
+}
+
+$upstream = dirname(__DIR__);
+
+try {
+    if ($options['manifest'] !== null) {
+        $manifest = json_decode((string) @file_get_contents($options['manifest']), true);
+        if (!is_array($manifest) || !isset($manifest['version'], $manifest['files'], $manifest['.gitignore'])) {
+            throw new RuntimeException("{$options['manifest']} is not a sync-core manifest.");
+        }
+        $files = null;
+        $tag = $manifest['version'];
+    } else {
+        $tag = $options['tag'] ?? newestTag($upstream);
+        $files = SyncCore::tagFiles($upstream, $tag);
+        $manifest = SyncCore::manifest($files, $tag);
+    }
+
+    if ($options['print_manifest']) {
+        fwrite(STDOUT, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        exit(0);
+    }
+    if ($dirs === []) {
+        fwrite(STDERR, USAGE);
+        exit(2);
+    }
+
+    if (!$options['check']) {
+        if ($files === null) {
+            throw new RuntimeException('Sync reads the tag from git; --manifest is for --check only.');
+        }
+        foreach ($dirs as $dir) {
+            $result = SyncCore::sync($dir, $files, $tag, $options['force']);
+            $line = "{$dir}: synced to {$tag} (" . count($result['written']) . ' core files';
+            $line .= $result['deleted'] ? ', deleted ' . implode(', ', $result['deleted']) : '';
+            $line .= $result['gitignore_changed'] ? ', .gitignore updated' : '';
+            fwrite(STDOUT, $line . ")\n");
+        }
+        exit(0);
+    }
+
+    $allClean = true;
+    foreach ($dirs as $dir) {
+        $report = $options['ref'] !== null ? SyncCore::checkRef($dir, $options['ref'], $manifest) : SyncCore::checkDir($dir, $manifest);
+        $label = $options['ref'] !== null ? "{$dir}@{$options['ref']}" : $dir;
+        $clean = SyncCore::isClean($report);
+        $allClean = $allClean && $clean;
+        fwrite(STDOUT, $label . ': ' . ($clean ? "clean at {$tag}" : describe($report)) . "\n");
+    }
+    exit($allClean ? 0 : 1);
+} catch (RuntimeException $e) {
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(2);
+}
+
+function newestTag(string $upstream): string
+{
+    $tags = array_filter(explode("\n", (string) shell_exec('git -C ' . escapeshellarg($upstream) . ' tag --list --sort=-v:refname')));
+    foreach ($tags as $tag) {
+        if (preg_match('/^\d+\.\d+\.\d+$/', $tag)) {
+            return $tag;
+        }
+    }
+    throw new RuntimeException('No version tag found; pass --tag=TAG.');
+}
+
+function describe(array $report): string
+{
+    $parts = ['marker ' . ($report['marker'] ?? 'missing')];
+    foreach (['drift' => 'drift', 'missing' => 'missing', 'removed_present' => 'removed file present', 'case_collisions' => 'case collision'] as $key => $name) {
+        if ($report[$key]) {
+            $parts[] = $name . ': ' . implode(', ', $report[$key]);
+        }
+    }
+    if ($report['gitignore_missing']) {
+        $parts[] = '.gitignore lacks: ' . implode(', ', $report['gitignore_missing']);
+    }
+    if ($report['gitignore_forbidden']) {
+        $parts[] = '.gitignore must not ignore: ' . implode(', ', $report['gitignore_forbidden']);
+    }
+    if ($report['vendor_tracked']) {
+        $parts[] = 'vendor/ is tracked';
+    }
+    return 'DRIFT (' . implode('; ', $parts) . ')';
+}

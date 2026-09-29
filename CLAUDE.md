@@ -150,6 +150,20 @@ php expire-cache.php
 # Or via web with key: https://domain.com/expire-cache.php?key=YOUR_KEY
 ```
 
+## Syncing Core Files into Instances
+
+Every instance runs byte-identical core files from one release tag. `bin/sync-core` copies them from the tag (never the working tree) and checks for drift:
+
+```bash
+bin/sync-core --tag=1.1.0 ../s4bc2024-certificate                 # sync a working tree; never commits
+bin/sync-core --check ../*-certificate                             # drift report, exit 1 if any
+bin/sync-core --check --ref=2023 ../tdr2024-certificate            # a deploy branch, without checking it out
+bin/sync-core --manifest > manifest.json                           # then, on the server (no git needed):
+php sync-core --check --manifest=manifest.json ~/applications/{app}/public_html
+```
+
+The core list is `SyncCore::CORE_FILES` in `bin/SyncCore.php`; everything else (`config.json`, `config-override.json`, `custom-callbacks.php`, `resources/`, `CLAUDE.md`, `tests/`) is instance-owned. Sync also deletes files dropped from core (`bulk_create.php`), writes `.dynamic-pdf-version.json` (blocked by `.htaccess`), adds upstream's `.gitignore` lines and removes any `composer.lock` ignore. It refuses the upstream repo, uncommitted changes to core files, and names that collide with a core file by case only (`README.md` vs `readme.md`).
+
 ## Creating a New Project
 
 1. Copy this entire directory to a new project folder
