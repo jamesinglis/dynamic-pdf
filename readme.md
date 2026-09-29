@@ -1,6 +1,6 @@
 # Dynamic PDF Generator
 
-**Version 1.0.1** | PHP 8.2+
+**Version 1.1.0** | PHP 8.2+
 
 * Author: James Inglis <hello@jamesinglis.no>
 * URL: https://github.com/jamesinglis/dynamic-pdf
@@ -379,6 +379,18 @@ A mutate function will affect all instances that a value is used. At present, th
 
 
 ## Version History
+
+### 1.1.0 (2026-09-29)
+* **Names keep their accents:** text stays UTF-8 through every callback and is converted to cp1252 exactly once, at the render point (`pdf_text()`), so José, Søren and Zoë print as typed; characters cp1252 can't hold are transliterated (Łukasz → Lukasz) or dropped, never printed as "?". Fixes names garbled by the older `custom_utf8_decode` direction
+* A letter the text block's font has no glyph for prints as plain ASCII (é as e) instead of a blank (`fallback_missing_glyphs()`)
+* The name filter (`filter_name_characters()`) keeps accents, `&` and the curly apostrophe `’`; `strip_accents()` is a deprecated alias and `custom_utf8_decode()` is removed
+* URL arguments of an unlisted type use `FILTER_UNSAFE_RAW`, so `O'Brien` and `&` are no longer HTML-escaped into the PDF
+* Host-level validation callback (`validate_arguments_callback`), ANDed with per-argument validation
+* `test-links.php` requires a key on every host not listed in `environments`; `prod*`/`dev*` environment colours; `label` and `for_hosts` are no longer turned into URL arguments
+* `rotate-keys.php` reads `config.json` raw (never bakes in `config-override.json`) and accepts `--no-preserve`
+* `.htaccess` blocks URL-encoded `resources/` requests and bare protected directory paths
+* The core version is part of the cache key, so a release never serves PDFs cached by the previous one
+* `composer.lock` is tracked; `setasign/fpdf` is pinned to 1.8.x (1.9 deprecates the PHP font definitions); `bulk_create.php` and Guzzle are removed; PHPUnit tests cover the core helpers
 
 ### 1.0.1 (2026-09-25)
 * Turns `display_errors` off before anything loads, so errors never disclose server paths (debug mode still enables it)
