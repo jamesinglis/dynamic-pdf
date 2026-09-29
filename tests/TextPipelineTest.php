@@ -51,7 +51,10 @@ final class TextPipelineTest extends TestCase
             'non-breaking spaces removed' => ["\u{00A0}José\u{00A0}", 'José'],
             'emoji-only name becomes empty' => ["\u{1F600}\u{1F600}", ''],
             'invalid utf8 removed' => ["Jos\xC3 e", 'Jos e'],
-            'non-latin letters kept for pdf_text to decide' => ["Wei \u{4E2D}", "Wei \u{4E2D}"],
+            'letters outside the Latin script removed' => ["Wei \u{4E2D}", 'Wei'],
+            'greek-only name becomes empty' => ["\u{039D}\u{03AF}\u{03BA}\u{03BF}\u{03C2}", ''],
+            'cyrillic-only name becomes empty' => ["\u{0414}\u{043C}\u{0438}\u{0442}\u{0440}\u{0438}\u{0439}", ''],
+            'latin letters outside cp1252 kept for pdf_text to transliterate' => ['Łukasz', 'Łukasz'],
             'combining mark kept' => ["Jose\u{0301}", "Jose\u{0301}"],
         ];
     }
@@ -81,6 +84,25 @@ final class TextPipelineTest extends TestCase
     public function testCustomUtf8DecodeIsGone(): void
     {
         $this->assertFalse(function_exists('custom_utf8_decode'));
+    }
+
+    public function testCacheFilenamesDifferForNamesThatDifferOnlyInAccentedLetters(): void
+    {
+        $config = ['global' => ['locale' => 'en_AU.UTF-8']];
+
+        $this->assertNotSame(cache_filename(['PDF', 'Søren', '100'], $config), cache_filename(['PDF', 'Sören', '100'], $config));
+        $this->assertNotSame(cache_filename(['PDF', 'José'], $config), cache_filename(['PDF', 'Josè'], $config));
+    }
+
+    public function testCacheFilenameIsSafeReadableAndStable(): void
+    {
+        $config = ['global' => ['locale' => 'en_AU.UTF-8']];
+        $filename = cache_filename(['PDF', 'Smith & Jones', '100', true], $config);
+
+        $this->assertMatchesRegularExpression('/^[A-Za-z0-9._-]+\.pdf$/', $filename);
+        $this->assertStringStartsWith('PDF-Smith_Jones-100-1-', $filename);
+        $this->assertStringEndsWith('-' . cache_config_hash($config) . '.pdf', $filename);
+        $this->assertSame($filename, cache_filename(['PDF', 'Smith & Jones', '100', true], $config));
     }
 
     public function testCacheHashIncludesTheCoreVersion(): void

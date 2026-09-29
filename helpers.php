@@ -43,9 +43,11 @@ function drop_invalid_utf8(string $input): string
 }
 
 /**
- * Keep only the characters a name may contain: letters with their accents, digits, spaces and . , ' ’ - ( ) &
+ * Keep only the characters a name may contain: Latin-script letters with their accents, digits, spaces and . , ' ’ - ( ) &
  *
- * Filters characters only. Text stays UTF-8 until pdf_text() converts it at the render point.
+ * Filters characters only. Text stays UTF-8 until pdf_text() converts it at the render point. Letters from other
+ * scripts are removed here because the fonts' cp1252 encoding can't hold them: a name written only in them filters
+ * to '' and fails validation, rather than rendering as a blank certificate.
  *
  * @param string $input
  * @return string
@@ -54,7 +56,7 @@ function filter_name_characters(string $input): string
 {
     $input = trim(drop_invalid_utf8($input));
 
-    return trim(preg_replace("/[^\p{L}\p{M}0-9., '\x{2019}\-()&]+/u", '', $input) ?? '');
+    return trim(preg_replace("/[^\p{Latin}\p{M}0-9., '\x{2019}\-()&]+/u", '', $input) ?? '');
 }
 
 /**
@@ -136,6 +138,24 @@ function fallback_missing_glyphs(string $cp1252_text, callable $glyph_width): st
     }
 
     return $output;
+}
+
+/**
+ * Cache filename for a set of URL argument values
+ *
+ * The readable part keeps only ASCII, so it can't tell "Søren" from "Sören"; a hash of the exact values keeps
+ * names that differ only in accented letters from sharing a cached PDF.
+ *
+ * @param array $parts the host slug and each URL argument's original (unmutated) value
+ * @param array $config
+ * @return string
+ */
+function cache_filename(array $parts, array $config): string
+{
+    $readable = preg_replace('/[^A-Za-z0-9-.]+/', '_', implode('-', $parts));
+    $exact = substr(md5(implode("\x1F", $parts)), 0, 8);
+
+    return $readable . '-' . $exact . '-' . cache_config_hash($config) . '.pdf';
 }
 
 /**

@@ -141,8 +141,7 @@ if ($config['global']['validate_arguments'] && $valid_arguments === false) {
     exit();
 }
 
-$cache_filename[] = cache_config_hash($config);
-$filename = preg_replace('/[^A-Za-z0-9-.]+/', '_', implode('-', $cache_filename)) . '.pdf';
+$filename = cache_filename($cache_filename, $config);
 $file_path = __DIR__ . '/cache/' . $filename;
 
 // If a cached file already exists, just output that to the browser

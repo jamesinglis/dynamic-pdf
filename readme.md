@@ -109,7 +109,7 @@ This solution has implemented callback functionality where possible to enable mo
 
 Each relevant callback needs to be a callable function, and can be a standard PDF function or a custom function. callbacks.php contains a number of commonly used callbacks, and are named [type]_[description]:
 
-* sanitize_process_name_filter - Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' ’ - ( ) &
+* sanitize_process_name_filter - Standard function for sanitizing a name: keeps Latin-script letters with their accents, digits, spaces and . , ' ’ - ( ) &
 * validate_not_empty - Ensure that the input is not empty
 * validate_int_under_999999 - Ensure that the integer is between 0 and 999999
 * validate_float_under_999999 - Ensure that the float is between 0 and 999999
@@ -270,7 +270,7 @@ Runs straight after `pdf_text` for every text block. If the text block's font ha
 
 ### filter_name_characters
 
-Keeps only letters with their accents, digits, spaces and . , ' ’ - ( ) &. It filters characters and never converts encodings.
+Keeps only Latin-script letters with their accents, digits, spaces and . , ' ’ - ( ) &. It filters characters and never converts encodings. Letters from other scripts are removed because the fonts can't print them, so a name written only in them fails validation instead of producing a blank certificate.
 
 ### strip_accents
 
@@ -383,13 +383,13 @@ A mutate function will affect all instances that a value is used. At present, th
 ### 1.1.0 (2026-09-29)
 * **Names keep their accents:** text stays UTF-8 through every callback and is converted to cp1252 exactly once, at the render point (`pdf_text()`), so José, Søren and Zoë print as typed; characters cp1252 can't hold are transliterated (Łukasz → Lukasz) or dropped, never printed as "?". Fixes names garbled by the older `custom_utf8_decode` direction
 * A letter the text block's font has no glyph for prints as plain ASCII (é as e) instead of a blank (`fallback_missing_glyphs()`)
-* The name filter (`filter_name_characters()`) keeps accents, `&` and the curly apostrophe `’`; `strip_accents()` is a deprecated alias and `custom_utf8_decode()` is removed
+* The name filter (`filter_name_characters()`) keeps Latin-script letters with their accents, `&` and the curly apostrophe `’` (a name only in another script fails validation rather than rendering blank); `strip_accents()` is a deprecated alias and `custom_utf8_decode()` is removed
 * URL arguments of an unlisted type use `FILTER_UNSAFE_RAW`, so `O'Brien` and `&` are no longer HTML-escaped into the PDF
 * Host-level validation callback (`validate_arguments_callback`), ANDed with per-argument validation
 * `test-links.php` requires a key on every host not listed in `environments`; `prod*`/`dev*` environment colours; `label` and `for_hosts` are no longer turned into URL arguments
 * `rotate-keys.php` reads `config.json` raw (never bakes in `config-override.json`) and accepts `--no-preserve`
 * `.htaccess` blocks URL-encoded `resources/` requests and bare protected directory paths
-* The core version is part of the cache key, so a release never serves PDFs cached by the previous one
+* The core version is part of the cache key, so a release never serves PDFs cached by the previous one, and the key hashes the exact argument values, so names differing only in accented letters never share a cached PDF
 * `composer.lock` is tracked; `setasign/fpdf` is pinned to 1.8.x (1.9 deprecates the PHP font definitions); `bulk_create.php` and Guzzle are removed; PHPUnit tests cover the core helpers
 
 ### 1.0.1 (2026-09-25)
