@@ -109,7 +109,7 @@ This solution has implemented callback functionality where possible to enable mo
 
 Each relevant callback needs to be a callable function, and can be a standard PDF function or a custom function. callbacks.php contains a number of commonly used callbacks, and are named [type]_[description]:
 
-* sanitize_process_name_filter - Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' - ( ) &
+* sanitize_process_name_filter - Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' ’ - ( ) &
 * validate_not_empty - Ensure that the input is not empty
 * validate_int_under_999999 - Ensure that the integer is between 0 and 999999
 * validate_float_under_999999 - Ensure that the float is between 0 and 999999
@@ -264,9 +264,13 @@ Helper functions that don't belong anywhere else, but it's worth documenting:
 
 Converts UTF-8 text to the cp1252 bytes the fonts expect. Core calls it once for every text block, just before the text is measured and drawn, so names keep their accents ("José" prints as "José"). Characters cp1252 can't hold are transliterated where the locale allows ("Łukasz" prints as "Lukasz") and dropped otherwise. Callbacks work on UTF-8 and must never convert text themselves, or it is converted twice and garbled.
 
+### fallback_missing_glyphs
+
+Runs straight after `pdf_text` for every text block. If the text block's font has no glyph for an accented letter (some fonts are subsets with ASCII only), that letter prints as its plain ASCII form ("José" as "Jose", "Æ" as "AE") instead of a blank. Fonts with full coverage are unaffected.
+
 ### filter_name_characters
 
-Keeps only letters with their accents, digits, spaces and . , ' - ( ) &. It filters characters and never converts encodings.
+Keeps only letters with their accents, digits, spaces and . , ' ’ - ( ) &. It filters characters and never converts encodings.
 
 ### strip_accents
 

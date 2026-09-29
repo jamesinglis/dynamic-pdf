@@ -223,6 +223,9 @@ foreach ($config["text_blocks"] as $text_block) {
     // Text is UTF-8 up to here; convert it for the font exactly once, before it is measured or drawn
     $text = pdf_text((string) $text);
 
+    // A subset font may lack accented glyphs: print those letters as plain ASCII rather than blank
+    $text = fallback_missing_glyphs($text, fn(string $character) => $pdf->GetStringWidth($character));
+
     if ($text_block["fit_line"]) {
         while ($pdf->GetStringWidth($text) > $text_block["position"]["width"] - 2) {
             $font_size--;

@@ -44,6 +44,7 @@ final class TextPipelineTest extends TestCase
         return [
             'accents kept' => ['José Núñez', 'José Núñez'],
             'ampersand kept' => ['Smith & Jones', 'Smith & Jones'],
+            'curly apostrophe kept as typed' => ["O\u{2019}Brien", "O\u{2019}Brien"],
             'allowed punctuation and digits kept' => ["O'Brien-Smith (Jr.), 2", "O'Brien-Smith (Jr.), 2"],
             'markup characters removed' => ['<b>Bob</b>;"', 'bBobb'],
             'surrounding spaces trimmed' => ['  Zoë  ', 'Zoë'],

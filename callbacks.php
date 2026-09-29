@@ -231,7 +231,7 @@ function sanitize_boolean_filter($input)
 }
 
 /**
- * Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' - ( ) &
+ * Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' ’ - ( ) &
  *
  * @param $input
  * @return string

@@ -43,7 +43,7 @@ function drop_invalid_utf8(string $input): string
 }
 
 /**
- * Keep only the characters a name may contain: letters with their accents, digits, spaces and . , ' - ( ) &
+ * Keep only the characters a name may contain: letters with their accents, digits, spaces and . , ' ’ - ( ) &
  *
  * Filters characters only. Text stays UTF-8 until pdf_text() converts it at the render point.
  *
@@ -54,7 +54,7 @@ function filter_name_characters(string $input): string
 {
     $input = trim(drop_invalid_utf8($input));
 
-    return trim(preg_replace("/[^\p{L}\p{M}0-9., '\-()&]+/u", '', $input) ?? '');
+    return trim(preg_replace("/[^\p{L}\p{M}0-9., '\x{2019}\-()&]+/u", '', $input) ?? '');
 }
 
 /**
@@ -102,6 +102,37 @@ function pdf_text(string $text): string
         }
 
         $output .= $converted;
+    }
+
+    return $output;
+}
+
+/**
+ * Replace characters the current font has no glyph for, so they never print as blanks
+ *
+ * Some fonts are subsets without accented letters. A non-ASCII cp1252 character whose glyph width is zero is
+ * replaced by its ASCII transliteration (é becomes e, Æ becomes AE, ’ becomes ') or dropped when it has none.
+ *
+ * @param string $cp1252_text text already converted by pdf_text()
+ * @param callable $glyph_width returns the current font's width for one cp1252 character (e.g. $pdf->GetStringWidth(...))
+ * @return string
+ */
+function fallback_missing_glyphs(string $cp1252_text, callable $glyph_width): string
+{
+    $output = '';
+    foreach (str_split($cp1252_text) as $character) {
+        if (ord($character) < 0x80 || $glyph_width($character) > 0) {
+            $output .= $character;
+            continue;
+        }
+
+        $utf8 = @iconv('CP1252', 'UTF-8', $character);
+        $ascii = $utf8 === false ? false : @iconv('UTF-8', 'ASCII//TRANSLIT', $utf8);
+
+        // glibc's //TRANSLIT writes "?" for a character it can't transliterate
+        if ($ascii !== false && $ascii !== '' && !str_contains($ascii, '?')) {
+            $output .= $ascii;
+        }
     }
 
     return $output;

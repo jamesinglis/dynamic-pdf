@@ -177,7 +177,7 @@ php expire-cache.php
 
 ## Text Encoding
 
-Text stays UTF-8 from the URL through every callback. `index.php` converts each text block to cp1252 exactly once, with `pdf_text()`, just before `fit_line` measures it and `Cell`/`MultiCell` draws it. Never convert in a callback (no `utf8_decode`, `iconv` or `mb_convert_encoding`), or the text is converted twice and accented names garble. Upper-case with `mb_strtoupper($input, 'UTF-8')`, never `strtoupper`, which breaks multibyte letters (marchon once printed "SøREN").
+Text stays UTF-8 from the URL through every callback. `index.php` converts each text block to cp1252 exactly once, with `pdf_text()`, just before `fit_line` measures it and `Cell`/`MultiCell` draws it. Never convert in a callback (no `utf8_decode`, `iconv` or `mb_convert_encoding`), or the text is converted twice and accented names garble. Straight after `pdf_text()`, `fallback_missing_glyphs()` prints any accented letter the current font lacks as plain ASCII (é as e) instead of a blank; a font that needs it (e.g. wfw2026's subset SFL-ExtraBold) should be replaced with a full-coverage version when one is available. Upper-case with `mb_strtoupper($input, 'UTF-8')`, never `strtoupper`, which breaks multibyte letters (marchon once printed "SøREN").
 
 ## PHP 8.2+ Compatibility Notes
 
