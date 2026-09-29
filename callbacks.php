@@ -239,14 +239,14 @@ function sanitize_boolean_filter($input)
 }
 
 /**
- * Standard function for sanitizing a name
+ * Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' - ( ) &
  *
  * @param $input
  * @return string
  */
 function sanitize_process_name_filter($input)
 {
-    return trim(strip_accents($input));
+    return filter_name_characters((string) $input);
 }
 
 /**

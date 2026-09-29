@@ -93,7 +93,8 @@ foreach ($config['url_arguments'] as $url_argument) {
             $filter_options = array('options' => fn($input) => call_user_func($url_argument['sanitize_callback'], $input));
             break;
         default:
-            $filter_type = FILTER_SANITIZE_SPECIAL_CHARS;
+            // The output is a PDF, not HTML: keep O'Brien and & as typed (the cache filename is sanitised separately)
+            $filter_type = FILTER_UNSAFE_RAW;
     }
 
     $default_value = $url_argument['default'];
@@ -137,7 +138,7 @@ if ($config['global']['validate_arguments'] && $valid_arguments === false) {
     exit();
 }
 
-$cache_filename[] = substr(md5(json_encode($config)), 0, 6);
+$cache_filename[] = cache_config_hash($config);
 $filename = preg_replace('/[^A-Za-z0-9-.]+/', '_', implode('-', $cache_filename)) . '.pdf';
 $file_path = __DIR__ . '/cache/' . $filename;
 
@@ -215,6 +216,9 @@ foreach ($config["text_blocks"] as $text_block) {
     if (!empty($text_block['text_callback']) && is_callable($text_block['text_callback'])) {
         $text = call_user_func($text_block['text_callback'], $text, $text_block, $url_arguments, $host, $config["hosts"][$host]);
     }
+
+    // Text is UTF-8 up to here; convert it for the font exactly once, before it is measured or drawn
+    $text = pdf_text((string) $text);
 
     if ($text_block["fit_line"]) {
         while ($pdf->GetStringWidth($text) > $text_block["position"]["width"] - 2) {
