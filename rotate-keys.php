@@ -14,14 +14,17 @@ declare(strict_types=1);
  * when accessed via web server to prevent unauthorized key rotation.
  *
  * Usage:
- *   php rotate-keys.php
+ *   php rotate-keys.php [--no-preserve]
+ *
+ * Options:
+ *   --no-preserve    Don't save old keys in the config file
  *
  * Features:
  * - CLI-only execution (blocks web server access)
  * - Rotates keys for all environments with existing non-empty keys
  * - Rotates the global cache expiry key (global.cache_expiry_key)
  * - Preserves empty keys (environments without authentication)
- * - Saves old keys as timestamped fields in the config (key_YYYYMMDDHHMMSS)
+ * - Optionally saves old keys as timestamped fields in the config (key_YYYYMMDDHHMMSS)
  * - Validates JSON structure before saving
  * - Comprehensive logging of changes made
  *
@@ -52,9 +55,6 @@ if (isset($_SERVER['HTTP_HOST']) || isset($_SERVER['REQUEST_URI']) || isset($_SE
 // DEPENDENCIES AND INITIALIZATION
 // ================================
 
-// Include helpers to access load_config()
-require_once __DIR__ . '/helpers.php';
-
 // Script configuration
 const KEY_LENGTH = 24;
 
@@ -82,9 +82,10 @@ function generateRandomKey(int $length = KEY_LENGTH): string
  * Rotate keys in the configuration array
  *
  * @param array $config Configuration array to modify
+ * @param bool $preserveOldKeys Whether to save old keys in the config
  * @return array Array with rotation statistics
  */
-function rotateKeys(array &$config): array
+function rotateKeys(array &$config, bool $preserveOldKeys = true): array
 {
     $stats = [
         'total_environments' => 0,
@@ -102,18 +103,23 @@ function rotateKeys(array &$config): array
         $currentCacheKey = $config['global']['cache_expiry_key'];
         $newCacheKey = generateRandomKey(24); // Standard 24-character key length
 
-        // Save old cache key with timestamp
-        $oldCacheKeyField = "cache_expiry_key_{$timestamp}";
-        $config['global'][$oldCacheKeyField] = $currentCacheKey;
+        // Save old cache key with timestamp if preserving
+        if ($preserveOldKeys) {
+            $oldCacheKeyField = "cache_expiry_key_{$timestamp}";
+            $config['global'][$oldCacheKeyField] = $currentCacheKey;
+            echo "✓ Rotated cache expiry key (old key saved as {$oldCacheKeyField})\n";
+        } else {
+            echo "✓ Rotated cache expiry key (old key not preserved)\n";
+        }
+
         $config['global']['cache_expiry_key'] = $newCacheKey;
 
         $stats['cache_expiry_rotated'] = true;
         $stats['cache_expiry_info'] = [
             'old_key' => $currentCacheKey,
             'new_key' => $newCacheKey,
-            'old_key_field' => $oldCacheKeyField
+            'old_key_field' => $preserveOldKeys ? $oldCacheKeyField : null
         ];
-        echo "✓ Rotated cache expiry key (old key saved as {$oldCacheKeyField})\n";
     }
 
     // Check environments
@@ -130,13 +136,19 @@ function rotateKeys(array &$config): array
 
             // Only rotate non-empty keys
             if (!empty($currentKey)) {
-                // Save old key with timestamp
-                $oldKeyField = "key_{$timestamp}";
-                $envConfig[$oldKeyField] = $currentKey;
-
                 // Generate and set new key
                 $newKey = generateRandomKey();
                 $envConfig['key'] = $newKey;
+
+                $oldKeyField = null;
+                // Save old key with timestamp if preserving
+                if ($preserveOldKeys) {
+                    $oldKeyField = "key_{$timestamp}";
+                    $envConfig[$oldKeyField] = $currentKey;
+                    echo "✓ Rotated key for environment: {$envName} (old key saved as {$oldKeyField})\n";
+                } else {
+                    echo "✓ Rotated key for environment: {$envName} (old key not preserved)\n";
+                }
 
                 $stats['keys_rotated']++;
                 $stats['rotated_environments'][$envName] = [
@@ -144,7 +156,6 @@ function rotateKeys(array &$config): array
                     'new_key' => $newKey,
                     'old_key_field' => $oldKeyField
                 ];
-                echo "✓ Rotated key for environment: {$envName} (old key saved as {$oldKeyField})\n";
             } else {
                 $stats['keys_skipped']++;
                 echo "- Skipped environment (no key): {$envName}\n";
@@ -166,13 +177,31 @@ try {
     echo "=== Key Rotation Script ===\n";
     echo "Dynamic PDF Certificate Generator\n\n";
 
-    // Load current configuration
+    // Parse command line arguments
+    $preserveOldKeys = true;
+    if (in_array('--no-preserve', $argv ?? [], true)) {
+        $preserveOldKeys = false;
+        echo "Running with --no-preserve flag (old keys will not be saved)\n\n";
+    }
+
+    // Load current configuration directly from config.json (not merged with overrides)
     echo "Loading configuration...\n";
-    $config = load_config();
+    $configPath = __DIR__ . '/config.json';
+    $configJson = file_get_contents($configPath);
+
+    if ($configJson === false) {
+        throw new Exception("Failed to read configuration file: {$configPath}");
+    }
+
+    $config = json_decode($configJson, true);
+
+    if ($config === null) {
+        throw new Exception("Failed to parse configuration JSON: " . json_last_error_msg());
+    }
 
     // Rotate keys
     echo "Rotating keys...\n";
-    $stats = rotateKeys($config);
+    $stats = rotateKeys($config, $preserveOldKeys);
 
     // Save updated configuration if changes were made
     if ($stats['keys_rotated'] > 0 || $stats['cache_expiry_rotated']) {
@@ -207,8 +236,10 @@ try {
         echo "\n=== New Cache Expiry Key ===\n";
         echo "global.cache_expiry_key: {$stats['cache_expiry_info']['new_key']}\n";
 
-        echo "\n=== Old Cache Expiry Key (preserved in config) ===\n";
-        echo "global.{$stats['cache_expiry_info']['old_key_field']}: {$stats['cache_expiry_info']['old_key']}\n";
+        if ($preserveOldKeys && $stats['cache_expiry_info']['old_key_field']) {
+            echo "\n=== Old Cache Expiry Key (preserved in config) ===\n";
+            echo "global.{$stats['cache_expiry_info']['old_key_field']}: {$stats['cache_expiry_info']['old_key']}\n";
+        }
     }
 
     if ($stats['keys_rotated'] > 0) {
@@ -217,15 +248,23 @@ try {
             echo "{$envName}: {$keyInfo['new_key']}\n";
         }
 
-        echo "\n=== Old Environment Keys (preserved in config) ===\n";
-        foreach ($stats['rotated_environments'] as $envName => $keyInfo) {
-            echo "{$envName}.{$keyInfo['old_key_field']}: {$keyInfo['old_key']}\n";
+        if ($preserveOldKeys) {
+            echo "\n=== Old Environment Keys (preserved in config) ===\n";
+            foreach ($stats['rotated_environments'] as $envName => $keyInfo) {
+                if ($keyInfo['old_key_field']) {
+                    echo "{$envName}.{$keyInfo['old_key_field']}: {$keyInfo['old_key']}\n";
+                }
+            }
         }
     }
 
     if ($stats['keys_rotated'] > 0 || $stats['cache_expiry_rotated']) {
         echo "\n⚠ IMPORTANT: Update any external systems or documentation that reference the old keys.\n";
-        echo "Old keys have been preserved in the configuration file for reference.\n";
+        if ($preserveOldKeys) {
+            echo "Old keys have been preserved in the configuration file for reference.\n";
+        } else {
+            echo "Old keys were NOT preserved in the configuration file.\n";
+        }
     }
 
     echo "\n✓ Key rotation completed successfully.\n";
