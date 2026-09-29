@@ -6,11 +6,13 @@ DirectoryIndex index.php
     RewriteEngine On
     RewriteBase /
 
-    # Block access to .git, cache, vendor, docs, .ddev directories
-    RewriteRule ^(\.git|cache|vendor|docs|\.ddev)(/.*)?$ - [F,L]
+    # Block access to resources directory (using THE_REQUEST to handle encoded URLs)
+    RewriteCond %{THE_REQUEST} \s/resources[/\s\?] [NC,OR]
+    RewriteCond %{THE_REQUEST} \s/resources$ [NC]
+    RewriteRule ^ - [F,L]
 
-    # Block access to resources directory
-    RewriteRule ^resources(/.*)?$ - [F,L]
+    # Block access to .git, cache, vendor, docs, .ddev directories
+    RewriteRule ^(\.git|cache|vendor|docs|\.ddev)(/|$) - [F,L]
 
     # Block access to markdown files
     RewriteRule \.(md|MD)$ - [F,L]
