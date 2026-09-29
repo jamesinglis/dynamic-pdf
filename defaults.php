@@ -9,6 +9,7 @@ $default_host = array(
     "pdf_orientation" => "P",
     "url_base" => "http://www.google.com",
     "redirect_location" => "http://www.google.com",
+    "validate_arguments_callback" => "",
 );
 
 $default_url_argument = array(

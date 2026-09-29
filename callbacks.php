@@ -39,17 +39,6 @@ function validate_custom_callback($input, array $url_argument)
 }
 
 /**
- * Host level custom validation callback
- *
- * @param array $url_arguments
- * @return bool
- */
-function host_validate_custom_callback(array $url_arguments)
-{
-    return array_key_exists('name', $url_arguments);
-}
-
-/**
  * Custom mutation callback for a URL argument
  *
  * @param string $input
@@ -62,16 +51,19 @@ function mutate_custom_callback($input, $url_argument)
 }
 
 /**
- * Custom callback to validate all URL arguments
+ * Host-level validation callback, set as a host's "validate_arguments_callback"
  *
- * @param array $host_configuration_array
- * @param array $url_arguments_array
- * @param boolean $valid_arguments
- * @return boolean Whether or not the URL arguments are valid
+ * Runs only after every URL argument has passed its own validation, for rules that span several arguments.
+ * Return false to fail the request; it can never rescue an argument that already failed.
+ *
+ * @param array $url_arguments processed URL arguments, keyed by name ("original" and "active" values)
+ * @param array $host_configuration_array this host's configuration
+ * @param string $host_name the matched host key
+ * @return bool Whether the URL arguments are valid together
  */
-function validate_arguments_custom_callback($host_configuration_array, $url_arguments_array, $valid_arguments)
+function validate_arguments_custom_callback(array $url_arguments, array $host_configuration_array, string $host_name): bool
 {
-    return $valid_arguments;
+    return true;
 }
 
 /**

@@ -125,6 +125,9 @@ foreach ($config['url_arguments'] as $url_argument) {
     $cache_filename[] = $url_arguments[$argument_name]['original'];
 }
 
+// If the host has a host-level validation callback, it can fail the request too (never rescue it)
+$valid_arguments = host_arguments_valid($valid_arguments, $config['hosts'][$host], $url_arguments, $host);
+
 // If we're validating the arguments and any of the above have failed their validation callback, now is the time to bail out to the redirect location
 if ($config['global']['validate_arguments'] && $valid_arguments === false) {
     if ($config['global']['debug_mode']) {

@@ -117,3 +117,29 @@ function cache_config_hash(array $config): string
 {
     return substr(md5(DYNAMIC_PDF_VERSION . json_encode($config)), 0, 6);
 }
+
+/**
+ * Run the host-level validation hook, if the host has one
+ *
+ * The hook is ANDed with the per-argument result: it can fail a request, never rescue one. As with per-argument
+ * validation, only a false return fails.
+ *
+ * @param bool $arguments_valid result of the per-argument validation
+ * @param array $host_configuration this host's configuration (may carry "validate_arguments_callback")
+ * @param array $url_arguments processed URL arguments, keyed by name
+ * @param string $host_name the matched host key
+ * @return bool
+ */
+function host_arguments_valid(bool $arguments_valid, array $host_configuration, array $url_arguments, string $host_name): bool
+{
+    if ($arguments_valid === false) {
+        return false;
+    }
+
+    $callback = $host_configuration['validate_arguments_callback'] ?? '';
+    if (empty($callback) || !is_callable($callback)) {
+        return true;
+    }
+
+    return call_user_func($callback, $url_arguments, $host_configuration, $host_name) !== false;
+}
