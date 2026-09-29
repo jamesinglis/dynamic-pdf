@@ -6,7 +6,7 @@
     "cache_dynamic_files": false,
     "cache_expiry_key": "KbkfiI1I7O5mFAkA9OYuHISE",
     "cache_expiry_after": 2,
-    "locale": "en_AU",
+    "locale": "en_AU.UTF-8",
     "expose_test_links": true,
     "allow_toggle_self_link": true
   },
@@ -32,16 +32,12 @@
       "amount": 1234
     }
   },
-  "bulk_create": {
-    "file_path": "/resources/",
-    "file_name": "Brisbane.csv",
-    "has_header": true
-  },
   "hosts": {
     "default": {
       "slug": "PDF",
       "pdf_template": "resources/blank.pdf",
       "pdf_template_callback": "",
+      "validate_arguments_callback": "",
       "pdf_orientation": "P",
       "redirect_location": "http://www.google.com",
       "default": true,

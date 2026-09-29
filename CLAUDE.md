@@ -28,13 +28,12 @@ curl "https://dynamic-pdf.ddev.site:8443/?name=Test&amount=1000"
 ├── config-override.json  # Local overrides (not committed)
 ├── custom-callbacks.php  # Project-specific callback functions
 ├── callbacks.php         # Reusable callback functions
-├── helpers.php           # Utility functions (load_config, strip_accents)
+├── helpers.php           # Utility functions (load_config, pdf_text, filter_name_characters, test-links access)
 ├── defaults.php          # Default configuration values
 ├── index.php             # Main certificate generator
 ├── test-links.php        # Testing interface
 ├── rotate-keys.php       # CLI key rotation utility
 ├── expire-cache.php      # Cache management
-├── bulk_create.php       # Batch certificate generation
 ├── resources/
 │   ├── *.pdf             # PDF templates
 │   └── fonts/            # Custom fonts
@@ -127,8 +126,9 @@ Access the Vue.js testing interface at `/test-links.php`
 1. Convert TTF to FPDF format:
 ```bash
 cd resources/fonts
-php ../../vendor/setasign/fpdf/makefont/makefont.php /path/to/font.ttf iso-8859-1
+php ../../vendor/setasign/fpdf/makefont/makefont.php /path/to/font.ttf cp1252
 ```
+Always generate cp1252 definitions: pdf_text() emits cp1252, so an iso-8859-1 font mis-draws ’ — € and the other 0x80-0x9F characters. Check the new definition's $uv map covers À–ÿ.
 
 2. Register in config.json:
 ```json
@@ -175,10 +175,14 @@ php expire-cache.php
 **Cause:** Using text_callback without manual variable replacement
 **Fix:** Add `str_replace()` calls in callback function
 
+## Text Encoding
+
+Text stays UTF-8 from the URL through every callback. `index.php` converts each text block to cp1252 exactly once, with `pdf_text()`, just before `fit_line` measures it and `Cell`/`MultiCell` draws it. Never convert in a callback (no `utf8_decode`, `iconv` or `mb_convert_encoding`), or the text is converted twice and accented names garble. Upper-case with `mb_strtoupper($input, 'UTF-8')`, never `strtoupper`, which breaks multibyte letters (marchon once printed "SøREN").
+
 ## PHP 8.2+ Compatibility Notes
 
 This project uses modern PHP features:
 - `NumberFormatter` for currency formatting (replaces deprecated `money_format`)
-- `mb_convert_encoding` for character encoding (replaces deprecated `utf8_decode`)
+- `pdf_text()` for character encoding (see Text Encoding)
 - Arrow functions for callbacks
 - Typed function parameters

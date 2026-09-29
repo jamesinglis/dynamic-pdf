@@ -32,7 +32,8 @@ For example: `https://example.com/?name=James%20Inglis` - the "name" argument ca
 * Flexible callback system for validation, sanitization, and formatting
 * PDF template switching via callbacks
 * Text and image block positioning with fit-to-width support
-* Caching with config-aware cache invalidation
+* Caching, invalidated automatically when the config or the core version changes
+* Accented names printed as typed (José, Søren, Zoë), converted once for the font at the render point
 * CLI key rotation utility
 * Host-based certificate variants
 
@@ -41,6 +42,7 @@ For example: `https://example.com/?name=James%20Inglis` - the "name" argument ca
 * **PHP 8.2+** with extensions:
   * `intl` (for NumberFormatter)
   * `mbstring` (for character encoding)
+  * `iconv` (for converting text to the fonts' cp1252 encoding)
   * `gd` or `imagick` (for image processing)
 * Composer for dependency management
 * Apache with mod_rewrite (for .htaccess security)
@@ -78,6 +80,7 @@ At minimum, the Hosts config needs to have a "default" value set up. Any other h
 * "pdf_template" - path to template filename, relative to repository root
 * "pdf_orientation" - "P" (portrait) or "L" (landscape)
 * "redirect_location" - public URL to redirect to upon failure 
+* "validate_arguments_callback" - (optional) host-level validation callback, run after every URL argument has passed its own validation; see [Host-Level Validation Callback](#host-level-validation-callback)
 
 ### URL Arguments
 
@@ -106,7 +109,7 @@ This solution has implemented callback functionality where possible to enable mo
 
 Each relevant callback needs to be a callable function, and can be a standard PDF function or a custom function. callbacks.php contains a number of commonly used callbacks, and are named [type]_[description]:
 
-* sanitize_process_name_filter - Standard function for sanitizing a name
+* sanitize_process_name_filter - Standard function for sanitizing a name: keeps letters with their accents, digits, spaces and . , ' - ( ) &
 * validate_not_empty - Ensure that the input is not empty
 * validate_int_under_999999 - Ensure that the integer is between 0 and 999999
 * validate_float_under_999999 - Ensure that the float is between 0 and 999999
@@ -160,6 +163,24 @@ Returns: (bool) validation result
 function validate_custom_callback($input, $url_argument)
 {
     return !empty($input);
+}
+```
+
+### Host-Level Validation Callback
+
+Set a host's `validate_arguments_callback` to validate the URL arguments together, for rules that span several of them. It runs only after every argument has passed its own validation, and its result is ANDed with theirs: returning false fails the request (visitors go to the redirect location), and it can never rescue an argument that already failed.
+
+Arguments:
+* array $url_arguments - processed URL arguments, keyed by name (each with "original" and "active" values)
+* array $host_configuration_array - this host's configuration
+* string $host_name - the matched host key
+
+Returns: (bool) validation result
+
+```php
+function validate_arguments_custom_callback(array $url_arguments, array $host_configuration_array, string $host_name): bool
+{
+    return true;
 }
 ```
 
@@ -239,9 +260,17 @@ function text_block_text_custom_callback($text, $url_arguments)
 
 Helper functions that don't belong anywhere else, but it's worth documenting:
 
+### pdf_text
+
+Converts UTF-8 text to the cp1252 bytes the fonts expect. Core calls it once for every text block, just before the text is measured and drawn, so names keep their accents ("José" prints as "José"). Characters cp1252 can't hold are transliterated where the locale allows ("Łukasz" prints as "Lukasz") and dropped otherwise. Callbacks work on UTF-8 and must never convert text themselves, or it is converted twice and garbled.
+
+### filter_name_characters
+
+Keeps only letters with their accents, digits, spaces and . , ' - ( ) &. It filters characters and never converts encodings.
+
 ### strip_accents
 
-Strip the accents from the string and replace with the nearest ASCII equivalent (e.g. "Jämés" becomes "James").
+Deprecated since 1.1.0: an alias of `filter_name_characters`, kept for older custom callbacks. It no longer strips accents.
 
 ## New in 1.0.0
 
@@ -291,6 +320,8 @@ Access `/test-links.php` for an interactive Vue.js-based testing interface that:
 - Supports multiple environments with key-based authentication
 - Provides email-friendly formatted text with copy buttons
 - Includes dark mode support
+
+Access rule (1.1.0): a host listed in `environments` needs that environment's key, or none if its key is empty (e.g. ddev). Any other host that reaches the site (`www.`, `phpstack-*.cloudwaysapps.com`, an old campaign hostname) needs one of the configured keys, and is closed when no environment has a key.
 
 ### Host Active Flag
 
