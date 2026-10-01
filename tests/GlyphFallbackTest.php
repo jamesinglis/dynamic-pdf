@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class GlyphFallbackTest extends TestCase
 {
@@ -33,6 +34,38 @@ final class GlyphFallbackTest extends TestCase
     public function testMissingLigatureFallsBackToItsLetters(): void
     {
         $this->assertSame('AErenskiold', fallback_missing_glyphs(pdf_text('Ærenskiöld'), self::asciiOnlyFont()));
+    }
+
+    public static function latinNameCases(): array
+    {
+        return [
+            'mixed accents' => ['José Núñez', 'Jose Nunez'],
+            'uppercase accents' => ['JOSÉ NÚÑEZ', 'JOSE NUNEZ'],
+            'diaeresis' => ['Zoë Müller', 'Zoe Muller'],
+            'decomposed accents' => ["Jose\u{0301} Mu\u{0308}ller", 'Jose Muller'],
+            'ligatures and slash' => ['Ærø Œuvres', 'AEro OEuvres'],
+            'lowercase ligatures' => ['æ œ Groß', 'ae oe Gross'],
+            'Nordic letters' => ['Šíma Žan Þór Ðaði', 'Sima Zan THor Dadi'],
+            'punctuation preserved' => ["Élodie O’Brien & René-Søren", "Elodie O'Brien & Rene-Soren"],
+        ];
+    }
+
+    #[DataProvider('latinNameCases')]
+    public function testMissingLatinGlyphsHaveTheSameFallbackInDifferentLocales(string $input, string $expected): void
+    {
+        $original = setlocale(LC_CTYPE, '0');
+        try {
+            foreach (['C', 'en_AU.UTF-8', 'en_US.UTF-8'] as $locale) {
+                if (setlocale(LC_CTYPE, $locale) === false) {
+                    continue;
+                }
+                $encoded = pdf_text($input);
+                $this->assertSame($encoded, fallback_missing_glyphs($encoded, self::fullFont()), $locale);
+                $this->assertSame($expected, fallback_missing_glyphs($encoded, self::asciiOnlyFont()), $locale);
+            }
+        } finally {
+            setlocale(LC_CTYPE, $original);
+        }
     }
 
     public function testMissingCurlyApostropheFallsBackToStraight(): void

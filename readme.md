@@ -1,6 +1,6 @@
 # Dynamic PDF Generator
 
-**Version 1.1.1** | PHP 8.2+
+**Version 1.2.0** | PHP 8.2+
 
 * Author: James Inglis <hello@jamesinglis.no>
 * URL: https://github.com/jamesinglis/dynamic-pdf
@@ -327,6 +327,12 @@ Access `/test-links.php` for an interactive Vue.js-based testing interface that:
 
 Access rule (1.1.0): a host listed in `environments` needs that environment's key, or none if its key is empty (e.g. ddev). Any other host that reaches the site (`www.`, `phpstack-*.cloudwaysapps.com`, an old campaign hostname) needs one of the configured keys, and is closed when no environment has a key.
 
+From 1.2.0, request ports are ignored when matching environment hosts. Scalar keys
+(including numeric JSON values) are compared as strings; malformed keys fail closed.
+The page publishes only display fields and certificate test data, never the full
+configuration or configured access keys. Shared test-page links omit keys: visitors
+must supply the destination environment's key themselves.
+
 ### Host Active Flag
 
 Hosts can now be marked as inactive, redirecting visitors to a specified location:
@@ -351,7 +357,7 @@ Use `php rotate-keys.php` from the command line to rotate authentication keys fo
 - Replaced deprecated `money_format()` with `NumberFormatter`
 - Replaced deprecated `utf8_decode()` with `mb_convert_encoding()`
 - Updated Symfony HttpFoundation to 6.4
-- Updated Guzzle to 7.x
+- Guzzle was removed in 1.1.0 (previously updated to 7.x)
 - Added arrow function syntax for callbacks
 
 ### Security Improvements
@@ -384,6 +390,17 @@ A mutate function will affect all instances that a value is used. At present, th
 
 ## Version History
 
+### 1.2.0 (2026-10-01)
+* Missing Latin glyphs use explicit ASCII replacements, so subset-font names render consistently on macOS and Linux without added accent punctuation; fonts with those glyphs retain accented text
+* Test-links no longer embeds the full configuration or environment keys, including on keyless development hosts; shared test-page links require visitors to supply their own access key
+* Environment matching ignores request ports; scalar configuration keys are cast to strings and malformed keys fail closed
+* Default URL argument filtering strips low control characters while preserving apostrophes, ampersands and accented text
+* `capitalize_input`, `mutate_to_uppercase` and `validate_float_under_999999_allow_zero` become shared callbacks; `mutate_float_*` remain instance-owned
+* `bin/sync-core` removes only recognised copies of those three functions in the same staged operation as the core upgrade. Customised, conditional, attributed, namespaced or duplicate definitions, and files with function imports, are refused before writes, even with `--force`; publication failures attempt restoration of previous contents and modes, retaining original backups if recovery fails
+* Callback migration protects staged, unstaged, untracked and ignored edits unless `--force` is explicitly used
+* Older tags keep their original callback behaviour. After migration, downgrade requires restoring the complete pre-upgrade working tree (including custom callbacks and the version marker); the tool refuses an unsafe core-only downgrade
+* Run sync in a local working tree, never directly against a serving web root: several file renames form the transaction and concurrent PHP requests could see an intermediate state
+
 ### 1.1.1 (2026-09-30)
 * Shared instance `CLAUDE.md` template becomes the fourteenth core file; upstream guidance remains upstream-only
 * Sync refuses to erase instance notes until they move to `CLAUDE.local.md`, including with `--force`; repeated syncs and unmodified template upgrades remain supported
@@ -412,7 +429,7 @@ A mutate function will affect all instances that a value is used. At present, th
 * **Breaking Changes:**
   * Requires PHP 8.2+ (drops support for PHP 7.x)
   * Updated Symfony HttpFoundation to 6.4 (changed `query->filter()` signature)
-  * Updated Guzzle to 7.x (changed request API)
+  * Updated Guzzle to 7.x (changed request API; subsequently removed in 1.1.0)
 
 * **New Features:**
   * Configuration override system (`config-override.json`)

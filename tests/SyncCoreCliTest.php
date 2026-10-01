@@ -87,6 +87,7 @@ final class SyncCoreCliTest extends TestCase
 
     public function testReleaseCliProtectsNotesAndChecksMappedTemplate(): void
     {
+        $tag = DYNAMIC_PDF_VERSION;
         $upstream = $this->dir . '/upstream';
         $instance = $this->dir . '/instance';
         mkdir($upstream);
@@ -100,7 +101,7 @@ final class SyncCoreCliTest extends TestCase
         }
         file_put_contents($upstream . '/CLAUDE.md', 'upstream-only guidance');
         $git = 'git -C ' . escapeshellarg($upstream);
-        foreach (['init -q', 'add -A', '-c user.name=Test -c user.email=test@example.com commit -qm fixture', 'tag 1.1.1'] as $args) {
+        foreach (['init -q', 'add -A', '-c user.name=Test -c user.email=test@example.com commit -qm fixture', 'tag ' . $tag] as $args) {
             exec($git . ' ' . $args . ' 2>&1', $output, $status);
             $this->assertSame(0, $status, implode("\n", $output));
         }
@@ -113,17 +114,17 @@ final class SyncCoreCliTest extends TestCase
             return [$status, implode("\n", $output)];
         };
         file_put_contents($instance . '/CLAUDE.md', 'campaign notes');
-        [$status] = $run('--tag=1.1.1', '--force', $instance);
+        [$status] = $run('--tag=' . $tag, '--force', $instance);
         $this->assertSame(2, $status);
         $this->assertFileDoesNotExist($instance . '/index.php');
         rename($instance . '/CLAUDE.md', $instance . '/CLAUDE.local.md');
-        [$status, $output] = $run('--tag=1.1.1', $instance);
+        [$status, $output] = $run('--tag=' . $tag, $instance);
         $this->assertSame(0, $status, $output);
         $this->assertStringContainsString('14 core files', $output);
         $this->assertSame('campaign notes', file_get_contents($instance . '/CLAUDE.local.md'));
-        [$status, $output] = $run('--check', '--tag=1.1.1', $instance);
+        [$status, $output] = $run('--check', '--tag=' . $tag, $instance);
         $this->assertSame(0, $status, $output);
-        [$status, $json] = $run('--manifest', '--tag=1.1.1');
+        [$status, $json] = $run('--manifest', '--tag=' . $tag);
         $this->assertSame(0, $status);
         $manifestPath = $this->dir . '/manifest.json';
         file_put_contents($manifestPath, $json);

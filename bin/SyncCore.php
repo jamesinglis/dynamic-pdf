@@ -6,7 +6,8 @@ declare(strict_types=1);
  * Copies the dynamic-pdf core files from a release tag into an instance, and checks instances for drift.
  *
  * Every instance runs byte-identical core files from one tag; everything else (config.json, config-override.json,
- * custom-callbacks.php, resources/, CLAUDE.local.md, tests) is instance-owned and never touched. Used by bin/sync-core.
+ * custom-callbacks.php, resources/, CLAUDE.local.md, tests) is instance-owned. From 1.2.0, sync removes only
+ * the three recognised shared callback definitions from custom-callbacks.php in the same transaction. Used by bin/sync-core.
  * Kept PHP 8.2-compatible so --check can run on the server against a deployed public_html.
  */
 final class SyncCore
@@ -105,7 +106,8 @@ final class SyncCore
             }
             $hashes[$path] = hash('sha256', $files[$path]);
         }
-        return ['version' => $tag, 'files' => $hashes, '.gitignore' => $files['.gitignore']];
+        return ['version' => $tag, 'files' => $hashes, '.gitignore' => $files['.gitignore'],
+            'shared_callbacks' => str_contains($files['callbacks.php'], 'function capitalize_input(')];
     }
 
     /**
@@ -114,7 +116,7 @@ final class SyncCore
      * Refuses, before writing anything, the upstream repository itself, a core file whose name collides with an
      * instance file by case only (86k-workplace's README.md vs readme.md, D22), and uncommitted changes to core files.
      *
-     * @return array{written: string[], deleted: string[], gitignore_changed: bool}
+     * @return array{written: string[], deleted: string[], gitignore_changed: bool, callbacks_changed: bool}
      */
     public static function sync(string $dir, array $files, string $tag, bool $force = false): array
     {
@@ -139,41 +141,256 @@ final class SyncCore
             }
         }
 
-        $written = [];
-        foreach (self::CORE_FILES as $path) {
-            if (!array_key_exists($path, $files)) {
-                continue;
-            }
-            $target = $dir . '/' . $path;
-            if (!is_dir(dirname($target))) {
-                mkdir(dirname($target), 0775, true);
-            }
-            file_put_contents($target, $files[$path]);
-            $written[] = $path;
+        $customPath = $dir . '/custom-callbacks.php';
+        if (is_link($customPath) || (file_exists($customPath) && !is_file($customPath))) {
+            throw new RuntimeException('Refusing non-regular custom-callbacks.php.');
+        }
+        $customBefore = is_file($customPath) ? file_get_contents($customPath) : null;
+        $foldsCallbacks = str_contains($files['callbacks.php'], 'function capitalize_input(');
+        $oldMarker = is_file($dir . '/' . self::MARKER)
+            ? json_decode(file_get_contents($dir . '/' . self::MARKER), true) : null;
+        if (!$foldsCallbacks && !empty($oldMarker['shared_callbacks'])) {
+            throw new RuntimeException('Cannot downgrade migrated callbacks; restore the complete pre-upgrade working tree, including custom callbacks and the version marker.');
+        }
+        $customAfter = $foldsCallbacks && $customBefore !== null
+            ? self::migrateCallbacks($customBefore) : $customBefore;
+        if ($customAfter !== $customBefore && !$force && self::isGitWorktree($dir)
+            && self::dirtyFiles($dir, ['custom-callbacks.php'], true)) {
+            throw new RuntimeException('Uncommitted custom-callbacks.php changes; commit or discard them first.');
         }
 
+        $changes = [];
+        $written = [];
+        if ($customAfter !== $customBefore) {
+            $changes['custom-callbacks.php'] = $customAfter;
+        }
+        foreach (self::CORE_FILES as $path) {
+            if (array_key_exists($path, $files)) {
+                $changes[$path] = $files[$path];
+                $written[] = $path;
+            }
+        }
         $deleted = [];
         foreach (self::REMOVED_FILES as $path) {
-            if (is_file($dir . '/' . $path)) {
-                unlink($dir . '/' . $path);
+            if (file_exists($dir . '/' . $path) || is_link($dir . '/' . $path)) {
+                $changes[$path] = null;
                 $deleted[] = $path;
             }
         }
-
         $manifest = self::manifest($files, $tag);
-        file_put_contents(
-            $dir . '/' . self::MARKER,
-            json_encode(['version' => $tag, 'files' => $manifest['files']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
-        );
-
-        $gitignorePath = $dir . '/.gitignore';
-        $before = is_file($gitignorePath) ? file_get_contents($gitignorePath) : null;
+        $marker = ['version' => $tag, 'files' => $manifest['files']];
+        if ($foldsCallbacks) {
+            $marker['shared_callbacks'] = true;
+        }
+        $changes[self::MARKER] = json_encode($marker, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        $before = is_file($dir . '/.gitignore') ? file_get_contents($dir . '/.gitignore') : null;
         $after = self::mergeGitignore($before ?? '', $files['.gitignore']);
         if ($after !== $before) {
-            file_put_contents($gitignorePath, $after);
+            $changes['.gitignore'] = $after;
         }
+        self::applyTransaction($dir, $changes);
+        return ['written' => $written, 'deleted' => $deleted, 'gitignore_changed' => $after !== $before,
+            'callbacks_changed' => $customAfter !== $customBefore];
+    }
 
-        return ['written' => $written, 'deleted' => $deleted, 'gitignore_changed' => $after !== $before];
+    /**
+     * Remove only known, top-level shared helpers. Unknown bodies/signatures fail before any writes,
+     * including with --force. Token offsets preserve every unrelated byte (notably mutate_float_*).
+     */
+    public static function migrateCallbacks(string $source): string
+    {
+        $names = ['capitalize_input', 'mutate_to_uppercase', 'validate_float_under_999999_allow_zero'];
+        try {
+            $tokens = token_get_all($source, TOKEN_PARSE);
+        } catch (ParseError $error) {
+            throw new RuntimeException('Cannot migrate invalid PHP in custom-callbacks.php; fix it before syncing.', 0, $error);
+        }
+        $offsets = [];
+        $offset = 0;
+        foreach ($tokens as $token) {
+            $offsets[] = $offset;
+            $offset += strlen(is_array($token) ? $token[1] : $token);
+        }
+        $ranges = [];
+        $seen = [];
+        $depth = 0;
+        $alternativeDepth = 0;
+        $namespaced = false;
+        $functionImports = false;
+        foreach ($tokens as $i => $token) {
+            // Interpolated strings have a tokenised opening brace and a literal closing brace.
+            if ($token === '{' || (is_array($token) && in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true))) { $depth++; }
+            if ($token === '}') { $depth--; }
+            if (is_array($token) && in_array($token[0], [T_ENDIF, T_ENDFOR, T_ENDFOREACH, T_ENDWHILE, T_ENDSWITCH, T_ENDDECLARE], true)) { $alternativeDepth--; }
+            if (is_array($token) && in_array($token[0], [T_IF, T_FOR, T_FOREACH, T_WHILE, T_SWITCH, T_DECLARE], true)) {
+                $header = $i + 1;
+                while (isset($tokens[$header]) && is_array($tokens[$header]) && in_array($tokens[$header][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $header++; }
+                if (($tokens[$header] ?? null) === '(') {
+                    $parentheses = 0;
+                    do {
+                        if ($tokens[$header] === '(') { $parentheses++; }
+                        if ($tokens[$header] === ')') { $parentheses--; }
+                        $header++;
+                    } while (isset($tokens[$header]) && $parentheses > 0);
+                    while (isset($tokens[$header]) && is_array($tokens[$header]) && in_array($tokens[$header][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $header++; }
+                    if (($tokens[$header] ?? null) === ':') { $alternativeDepth++; }
+                }
+            }
+            if (is_array($token) && $token[0] === T_NAMESPACE) { $namespaced = true; }
+            if ($depth === 0 && is_array($token) && $token[0] === T_USE) {
+                $import = $i + 1;
+                while (isset($tokens[$import]) && is_array($tokens[$import]) && in_array($tokens[$import][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $import++; }
+                // Closure captures use (...), not an import declaration.
+                if (($tokens[$import] ?? null) !== '(') {
+                    for (; isset($tokens[$import]) && $tokens[$import] !== ';'; $import++) {
+                        if (is_array($tokens[$import]) && $tokens[$import][0] === T_FUNCTION) { $functionImports = true; }
+                    }
+                }
+            }
+            if (!is_array($token) || $token[0] !== T_FUNCTION) { continue; }
+            $j = $i + 1;
+            while (isset($tokens[$j]) && is_array($tokens[$j]) && in_array($tokens[$j][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG], true)) { $j++; }
+            $name = is_array($tokens[$j] ?? null) && $tokens[$j][0] === T_STRING ? strtolower($tokens[$j][1]) : '';
+            if (!in_array($name, $names, true)) { continue; }
+            if ($depth !== 0 || $alternativeDepth !== 0 || $namespaced || isset($seen[$name])) {
+                throw new RuntimeException("Cannot migrate nested, namespaced or duplicate callback {$name}.");
+            }
+            $previous = $i - 1;
+            while ($previous >= 0 && is_array($tokens[$previous]) && in_array($tokens[$previous][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $previous--; }
+            if (($tokens[$previous] ?? null) === ']') {
+                throw new RuntimeException("Cannot migrate attributed callback {$name}; reconcile it before syncing.");
+            }
+            $seen[$name] = true;
+            $normalized = '';
+            $bodyDepth = 0;
+            $bodyStarted = false;
+            for ($end = $i; isset($tokens[$end]); $end++) {
+                $part = $tokens[$end];
+                if (is_array($part)) {
+                    if (in_array($part[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+                    $normalized .= $part[0] === T_CONSTANT_ENCAPSED_STRING && $part[1] === '"UTF-8"'
+                        ? "'UTF-8'" : $part[1];
+                } else {
+                    $normalized .= $part;
+                    if ($part === '{') { $bodyDepth++; $bodyStarted = true; }
+                    if ($part === '}' && --$bodyDepth === 0 && $bodyStarted) { break; }
+                }
+            }
+            $signature = $name === 'validate_float_under_999999_allow_zero'
+                ? 'function'.$name.'\\((?:string)?\\$input\\)(?::bool)?'
+                : 'function'.$name.'\\((?:string)?\\$input,(?:array)?\\$url_argument\\)(?::string)?';
+            $body = $name === 'validate_float_under_999999_allow_zero'
+                ? '{returnfloatval($input)<999999&&floatval($input)>=0;}'
+                : "{returnmb_strtoupper(\$input,'UTF-8');}";
+            if (!preg_match('~^'.$signature.preg_quote($body, '~').'$~D', $normalized)) {
+                throw new RuntimeException("Cannot migrate customised callback {$name}; reconcile it before syncing.");
+            }
+            $first = $i;
+            $previous = $i - 1;
+            while ($previous >= 0 && is_array($tokens[$previous]) && $tokens[$previous][0] === T_WHITESPACE) { $previous--; }
+            if ($previous >= 0 && is_array($tokens[$previous]) && $tokens[$previous][0] === T_DOC_COMMENT) {
+                $first = $previous;
+            }
+            $ranges[] = [$offsets[$first], $offsets[$end] + strlen($tokens[$end])];
+        }
+        if ($ranges && $functionImports) {
+            throw new RuntimeException('Cannot migrate shared callbacks in a file with function imports; reconcile name resolution before syncing.');
+        }
+        foreach (array_reverse($ranges) as [$start, $end]) {
+            $source = substr($source, 0, $start) . substr($source, $end);
+        }
+        try {
+            token_get_all($source, TOKEN_PARSE);
+        } catch (ParseError $error) {
+            throw new RuntimeException('Migration would produce invalid PHP; refusing to write custom-callbacks.php.', 0, $error);
+        }
+        return $source;
+    }
+
+    /** Stage every replacement before publishing; restore prior contents and modes if publication fails. */
+    private static function applyTransaction(string $dir, array $changes): void
+    {
+        $backups = [];
+        $staged = [];
+        $applied = [];
+        $createdDirs = [];
+        $recovery = [];
+        try {
+            foreach ($changes as $path => $contents) {
+                $target = $dir . '/' . $path;
+                $parent = dirname($target);
+                for ($ancestor = $parent; $ancestor !== dirname($dir); $ancestor = dirname($ancestor)) {
+                    if (is_link($ancestor)) { throw new RuntimeException("Refusing symlink directory {$path}."); }
+                }
+                if (is_link($target) || (file_exists($target) && !is_file($target))) {
+                    throw new RuntimeException("Refusing non-regular target {$path}.");
+                }
+                $before = is_file($target) ? file_get_contents($target) : null;
+                if ($before === false) {
+                    throw new RuntimeException("Cannot read existing {$path} before syncing.");
+                }
+                $mode = $before !== null ? fileperms($target) & 0777 : 0644;
+                if (!is_dir($parent)) {
+                    if (!mkdir($parent, 0775, true)) { throw new RuntimeException("Cannot create directory for {$path}."); }
+                    $createdDirs[] = $parent;
+                }
+                // Restoring by rename also works when a published replacement is read-only.
+                $backups[$path] = $before === null ? null : self::stageFile($parent, $before, $mode, '.sync-core-backup-');
+                if ($contents !== null) {
+                    $staged[$path] = self::stageFile($parent, $contents, $mode, '.sync-core-');
+                }
+            }
+            foreach ($changes as $path => $contents) {
+                $target = $dir . '/' . $path;
+                $ok = $contents === null ? unlink($target) : rename($staged[$path], $target);
+                if (!$ok) { throw new RuntimeException("Cannot publish {$path}."); }
+                $applied[] = $path;
+            }
+        } catch (Throwable $error) {
+            $failed = [];
+            foreach (array_reverse($applied) as $path) {
+                $target = $dir . '/' . $path;
+                try {
+                    $ok = $backups[$path] === null
+                        ? (!file_exists($target) || unlink($target))
+                        : rename($backups[$path], $target);
+                } catch (Throwable $rollbackError) {
+                    $ok = false;
+                }
+                if (!$ok) {
+                    $failed[] = $path;
+                    if ($backups[$path] !== null) { $recovery[] = $backups[$path]; }
+                }
+            }
+            if ($failed) {
+                throw new RuntimeException('Rollback failed for ' . implode(', ', $failed)
+                    . '; original backup files retained: ' . implode(', ', $recovery), 0, $error);
+            }
+            throw $error;
+        } finally {
+            foreach (array_merge(array_values($staged), array_values(array_filter($backups))) as $temp) {
+                if (is_file($temp) && !in_array($temp, $recovery, true)) { unlink($temp); }
+            }
+            foreach (array_reverse($createdDirs) as $parent) {
+                if (is_dir($parent) && count(scandir($parent)) === 2) { rmdir($parent); }
+            }
+        }
+    }
+
+    /** A same-directory staged file, with no leaked temporary file on staging failure. */
+    private static function stageFile(string $parent, string $contents, int $mode, string $prefix): string
+    {
+        $temp = tempnam($parent, $prefix);
+        if ($temp === false) { throw new RuntimeException('Cannot create staged file.'); }
+        try {
+            if (file_put_contents($temp, $contents) !== strlen($contents) || !chmod($temp, $mode)) {
+                throw new RuntimeException('Cannot write staged file.');
+            }
+        } catch (Throwable $error) {
+            unlink($temp);
+            throw $error;
+        }
+        return $temp;
     }
 
     /** Refuse to erase instance notes, even with --force, before any file is written. */
@@ -223,7 +440,8 @@ final class SyncCore
             $marker,
             // A deployed copy with no .gitignore has nothing to check; a repo without one is missing every line
             $gitignore ?? ($isRepo ? '' : null),
-            $isRepo ? self::vendorTracked($dir, null) : null
+            $isRepo ? self::vendorTracked($dir, null) : null,
+            is_file($dir . '/custom-callbacks.php') ? file_get_contents($dir . '/custom-callbacks.php') : null
         );
     }
 
@@ -253,7 +471,8 @@ final class SyncCore
             $paths,
             $marker,
             $contents ?? '',
-            self::vendorTracked($repo, $ref)
+            self::vendorTracked($repo, $ref),
+            $read('custom-callbacks.php')
         );
     }
 
@@ -269,7 +488,8 @@ final class SyncCore
             && $report['marker'] === $report['version']
             && ($report['gitignore_missing'] ?? []) === []
             && ($report['gitignore_forbidden'] ?? []) === []
-            && $report['vendor_tracked'] !== true;
+            && $report['vendor_tracked'] !== true
+            && ($report['callback_conflicts'] ?? []) === [];
     }
 
     /**
@@ -293,7 +513,7 @@ final class SyncCore
      * @param string[] $paths files present, for the removed-file check
      * @param string[] $namePaths every name the instance uses, for the case-collision check
      */
-    private static function buildReport(array $manifest, callable $hashOf, array $paths, array $namePaths, ?string $marker, ?string $gitignore, ?bool $vendorTracked): array
+    private static function buildReport(array $manifest, callable $hashOf, array $paths, array $namePaths, ?string $marker, ?string $gitignore, ?bool $vendorTracked, ?string $callbacks = null): array
     {
         $missing = [];
         $drift = [];
@@ -321,7 +541,19 @@ final class SyncCore
             $gitignoreForbidden = array_values(array_intersect($have, self::FORBIDDEN_GITIGNORE_LINES));
         }
 
+        $callbackConflicts = [];
+        if (!empty($manifest['shared_callbacks']) && $callbacks !== null) {
+            try {
+                if (self::migrateCallbacks($callbacks) !== $callbacks) {
+                    $callbackConflicts[] = 'shared definitions remain in custom-callbacks.php';
+                }
+            } catch (Throwable $error) {
+                $callbackConflicts[] = 'unsafe shared callback definitions in custom-callbacks.php';
+            }
+        }
+
         return [
+            'callback_conflicts' => $callbackConflicts,
             'version' => $manifest['version'],
             'marker' => $markerVersion,
             'missing' => $missing,
@@ -402,11 +634,21 @@ final class SyncCore
         if (!file_exists($dir . '/CLAUDE.md') && !is_link($dir . '/CLAUDE.md')) {
             $paths = array_values(array_diff($paths, ['CLAUDE.md']));
         }
-        [, $output] = self::git($dir, array_merge(['status', '--porcelain', '--'], $paths, self::REMOVED_FILES));
+        return self::dirtyFiles($dir, array_merge($paths, self::REMOVED_FILES));
+    }
+
+    /** Check exactly the requested paths, including instance-owned files subject to a migration. */
+    private static function dirtyFiles(string $dir, array $paths, bool $includeUntracked = false): array
+    {
+        if (!$paths) { return []; }
+        $args = ['status', '--porcelain'];
+        if ($includeUntracked) { $args[] = '--ignored'; }
+        [$status, $output] = self::git($dir, array_merge($args, ['--'], $paths));
+        if ($status !== 0) { throw new RuntimeException('Cannot check working-tree changes before syncing.'); }
         $dirty = [];
         foreach (array_filter(explode("\n", $output), 'strlen') as $line) {
-            // Untracked core files are fine to overwrite: there is nothing committed to lose
-            if (!str_starts_with($line, '??')) {
+            // Untracked core files retain the old overwrite policy; callback migrations also protect untracked work.
+            if ($includeUntracked || !str_starts_with($line, '??')) {
                 $dirty[] = substr($line, 3);
             }
         }

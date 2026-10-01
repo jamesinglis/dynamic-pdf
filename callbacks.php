@@ -199,6 +199,23 @@ function image_block_source_custom_callback($source, $image_block, $url_argument
  * Commonly used callbacks
  */
 
+/** Uppercase UTF-8 input; kept under both names used by instance configurations. */
+function capitalize_input($input, $url_argument)
+{
+    return mb_strtoupper($input, 'UTF-8');
+}
+
+function mutate_to_uppercase($input, $url_argument)
+{
+    return mb_strtoupper($input, 'UTF-8');
+}
+
+/** Accept zero, but exclude negative values and the upper bound. */
+function validate_float_under_999999_allow_zero($input): bool
+{
+    return floatval($input) < 999999 && floatval($input) >= 0;
+}
+
 /**
  * Callback that always returns true
  *

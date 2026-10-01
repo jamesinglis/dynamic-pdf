@@ -95,6 +95,7 @@ foreach ($config['url_arguments'] as $url_argument) {
         default:
             // The output is a PDF, not HTML: keep O'Brien and & as typed (the cache filename is sanitised separately)
             $filter_type = FILTER_UNSAFE_RAW;
+            $filter_options = array('flags' => FILTER_FLAG_STRIP_LOW);
     }
 
     $default_value = $url_argument['default'];

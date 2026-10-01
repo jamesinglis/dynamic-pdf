@@ -3,7 +3,7 @@
 /**
  * The dynamic-pdf core version. Part of the cache key, so each release stops serving PDFs cached by the previous one.
  */
-const DYNAMIC_PDF_VERSION = '1.1.1';
+const DYNAMIC_PDF_VERSION = '1.2.0';
 
 /**
  * Load configuration from config.json with optional config-override.json merge
@@ -112,8 +112,10 @@ function pdf_text(string $text): string
 /**
  * Replace characters the current font has no glyph for, so they never print as blanks
  *
- * Some fonts are subsets without accented letters. A non-ASCII cp1252 character whose glyph width is zero is
+ * Some fonts are subsets without accented letters. Zero width is the missing-glyph sentinel used by FPDF.
+ * A non-ASCII cp1252 character whose glyph width is zero is
  * replaced by its ASCII transliteration (é becomes e, Æ becomes AE, ’ becomes ') or dropped when it has none.
+ * Latin letters use explicit replacements: iconv's ASCII transliteration can add accent punctuation on macOS.
  *
  * @param string $cp1252_text text already converted by pdf_text()
  * @param callable $glyph_width returns the current font's width for one cp1252 character (e.g. $pdf->GetStringWidth(...))
@@ -121,6 +123,21 @@ function pdf_text(string $text): string
  */
 function fallback_missing_glyphs(string $cp1252_text, callable $glyph_width): string
 {
+    // Accented Latin letters and ligatures in cp1252. Keep case and expand ligatures without locale/platform-dependent accent marks.
+    static $latin_ascii = [
+        'À' => 'A', 'Á' => 'A', 'Â' => 'A', 'Ã' => 'A', 'Ä' => 'A', 'Å' => 'A', 'Æ' => 'AE',
+        'Ç' => 'C', 'È' => 'E', 'É' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+        'Ì' => 'I', 'Í' => 'I', 'Î' => 'I', 'Ï' => 'I', 'Ð' => 'D', 'Ñ' => 'N',
+        'Ò' => 'O', 'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ö' => 'O', 'Ø' => 'O', 'Œ' => 'OE',
+        'Ù' => 'U', 'Ú' => 'U', 'Û' => 'U', 'Ü' => 'U', 'Ý' => 'Y', 'Ÿ' => 'Y',
+        'Š' => 'S', 'Ž' => 'Z', 'Þ' => 'TH', 'ß' => 'ss',
+        'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a', 'æ' => 'ae',
+        'ç' => 'c', 'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i', 'ð' => 'd', 'ñ' => 'n',
+        'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o', 'ø' => 'o', 'œ' => 'oe',
+        'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u', 'ý' => 'y', 'ÿ' => 'y',
+        'š' => 's', 'ž' => 'z', 'þ' => 'th',
+    ];
     $output = '';
     foreach (str_split($cp1252_text) as $character) {
         if (ord($character) < 0x80 || $glyph_width($character) > 0) {
@@ -129,7 +146,7 @@ function fallback_missing_glyphs(string $cp1252_text, callable $glyph_width): st
         }
 
         $utf8 = @iconv('CP1252', 'UTF-8', $character);
-        $ascii = $utf8 === false ? false : @iconv('UTF-8', 'ASCII//TRANSLIT', $utf8);
+        $ascii = $utf8 === false ? false : ($latin_ascii[$utf8] ?? @iconv('UTF-8', 'ASCII//TRANSLIT', $utf8));
 
         // glibc's //TRANSLIT writes "?" for a character it can't transliterate
         if ($ascii !== false && $ascii !== '' && !str_contains($ascii, '?')) {
@@ -206,10 +223,13 @@ function host_arguments_valid(bool $arguments_valid, array $host_configuration, 
  */
 function environment_for_host(array $environments, string $host): string
 {
-    $host = strtolower($host);
-    if ($host === '') {
+    $request = parse_url('http://' . strtolower($host));
+    if ($host === '' || !is_array($request) || !isset($request['host'])
+        || isset($request['user']) || isset($request['pass']) || isset($request['path'])
+        || isset($request['query']) || isset($request['fragment'])) {
         return '';
     }
+    $host = $request['host'];
 
     foreach ($environments as $name => $environment) {
         if (!is_array($environment) || !is_string($environment['url'] ?? null)) {
@@ -222,12 +242,7 @@ function environment_for_host(array $environments, string $host): string
         }
 
         $environment_host = strtolower($parsed['host']);
-        $candidates = [$environment_host];
-        if (isset($parsed['port'])) {
-            $candidates[] = $environment_host . ':' . $parsed['port'];
-        }
-
-        if (in_array($host, $candidates, true)) {
+        if ($host === $environment_host) {
             return (string) $name;
         }
     }
@@ -252,9 +267,9 @@ function test_links_access_allowed(array $environments, string $host, mixed $pro
 
     $listed = environment_for_host($environments, $host);
     if ($listed !== '') {
-        $key = is_string($environments[$listed]['key'] ?? null) ? $environments[$listed]['key'] : '';
+        $key = test_links_environment_key($environments[$listed]);
 
-        return $key === '' || ($provided_key !== '' && hash_equals($key, $provided_key));
+        return $key !== null && ($key === '' || ($provided_key !== '' && hash_equals($key, $provided_key)));
     }
 
     if ($provided_key === '') {
@@ -262,11 +277,18 @@ function test_links_access_allowed(array $environments, string $host, mixed $pro
     }
 
     foreach ($environments as $environment) {
-        $key = is_array($environment) && is_string($environment['key'] ?? null) ? $environment['key'] : '';
-        if ($key !== '' && hash_equals($key, $provided_key)) {
+        $key = is_array($environment) ? test_links_environment_key($environment) : null;
+        if ($key !== null && $key !== '' && hash_equals($key, $provided_key)) {
             return true;
         }
     }
 
     return false;
+}
+
+/** Null means a malformed key, not an intentionally keyless development environment. */
+function test_links_environment_key(array $environment): ?string
+{
+    $key = array_key_exists('key', $environment) ? $environment['key'] : '';
+    return is_scalar($key) ? (string) $key : null;
 }

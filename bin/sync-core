@@ -73,6 +73,7 @@ try {
             $result = SyncCore::sync($dir, $files, $tag, $options['force']);
             $line = "{$dir}: synced to {$tag} (" . count($result['written']) . ' core files';
             $line .= $result['deleted'] ? ', deleted ' . implode(', ', $result['deleted']) : '';
+            $line .= $result['callbacks_changed'] ? ', shared callbacks migrated' : '';
             $line .= $result['gitignore_changed'] ? ', .gitignore updated' : '';
             fwrite(STDOUT, $line . ")\n");
         }
@@ -107,8 +108,8 @@ function newestTag(string $upstream): string
 function describe(array $report): string
 {
     $parts = ['marker ' . ($report['marker'] ?? 'missing')];
-    foreach (['drift' => 'drift', 'missing' => 'missing', 'removed_present' => 'removed file present', 'case_collisions' => 'case collision'] as $key => $name) {
-        if ($report[$key]) {
+    foreach (['drift' => 'drift', 'missing' => 'missing', 'removed_present' => 'removed file present', 'case_collisions' => 'case collision', 'callback_conflicts' => 'callback conflict'] as $key => $name) {
+        if ($report[$key] ?? []) {
             $parts[] = $name . ': ' . implode(', ', $report[$key]);
         }
     }

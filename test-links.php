@@ -95,7 +95,7 @@ try {
                 $exposed_paths[] = $env;
                 $path_configs[$env] = [
                     'url' => $env_config['url'],
-                    'key' => $env_config['key'] ?? '',
+                    'requires_key' => test_links_environment_key($env_config) !== '',
                     'visible' => $visible,
                     'label' => $env_config['label'] ?? ucfirst($env)
                 ];
@@ -116,16 +116,9 @@ try {
     if ($allow_toggle_self_link && $has_test_links) {
         foreach ($path_configs as $env => $env_config) {
             $domain_url = $env_config['url'];
-            $env_key = $env_config['key'];
-
-            $query_params = [];
-            if (!empty($env_key)) {
-                $query_params[] = 'key=' . urlencode($env_key);
-            }
-
-            $query_string = !empty($query_params) ? '?' . implode('&', $query_params) : '';
             $full_domain_url = rtrim($domain_url, '/') . '/test-links.php';
-            $self_links[$env] = $full_domain_url . $query_string;
+            // Access keys are supplied by the visitor, never published from configuration.
+            $self_links[$env] = $full_domain_url;
         }
     }
 
@@ -145,9 +138,8 @@ try {
         'title' => 'Test Links - Dynamic PDF Generator',
         'has_test_links' => $has_test_links,
         'message' => $has_test_links ? null : 'No test configuration found',
-        'environments' => $environments,
+        'environments' => $path_configs,
         'test_versions' => $test_versions,
-        'config' => $config,
         'allow_toggle_self_link' => $allow_toggle_self_link,
         'self_links' => $self_links,
         'current_platform' => $current_platform,
@@ -412,7 +404,7 @@ try {
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                                 {{ pathConfigs[pathName] ? pathConfigs[pathName].label : pathName }}
                             </span>
-                        <span v-if="pathConfigs[pathName] && pathConfigs[pathName].key"
+                        <span v-if="pathConfigs[pathName] && pathConfigs[pathName].requires_key"
                               class="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 px-1 py-0.5 rounded">
                                 🔒
                             </span>
@@ -443,7 +435,7 @@ try {
                 Self Links
             </h3>
             <p class="text-blue-100 text-sm mt-1">
-                Links back to this testing environment
+                Links back to this testing environment. Protected environments require your own access key.
             </p>
         </div>
 
@@ -1061,7 +1053,7 @@ try {
             return {
                 // PHP data passed from server
                 phpData: <?php echo json_encode($page_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?> || {},
-                environments: <?php echo json_encode($environments ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>,
+                environments: <?php echo json_encode($path_configs, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>,
                 testVersions: <?php echo json_encode($test_versions ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>,
                 pathConfigs: <?php echo json_encode($path_configs ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>,
                 exposedPaths: <?php echo json_encode($exposed_paths ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>,
